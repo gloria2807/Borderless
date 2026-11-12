@@ -21,7 +21,9 @@
     "wallets:status": "tsx scripts/wallets-status.ts",
     "demo:purchase": "tsx scripts/demo-purchase.ts",
     "demo:providers": "tsx scripts/demo-providers.ts",
-    "demo:recovery": "tsx scripts/demo-failure-recovery.ts"
+    "demo:recovery": "tsx scripts/demo-failure-recovery.ts",
+    "demo:agent": "tsx scripts/demo-agent.ts",
+    "agent:dry-run": "tsx scripts/agent-dry-run.ts"
   },
   "dependencies": {
     "@libsql/client": "0.18.0",

@@ -99,7 +99,7 @@ async function runWithPayer(kp: Keypair, label: string, expectedCode: string) {
     const p = await createPurchase(database, { householdId: DEMO_HOUSEHOLD_ID, kind: "airtime", amountNgn: 200, initiatedBy: "script" });
     const r = await executePurchase(database, p.id);
     const ops = await horizon.operations().forAccount(kp.publicKey()).limit(50).call();
-    const types = ops.records.map((o) => o.type);
+    const types: string[] = ops.records.map((o) => o.type);
     console.log(`  ${label}`);
     check(`fails with ${expectedCode}`, r.failureCode === expectedCode, `${r.failureCode}: ${r.failureMessage}`);
     check("recorded as failed, not charged, nothing fulfilled", r.stage === "failed" && r.paymentStatus === "failed" && r.fulfilmentStatus === "not_started");

@@ -193,7 +193,7 @@ export const usageRecords = sqliteTable(
     /** Positive = consumed, negative = credited by a purchase. */
     delta: real("delta").notNull(),
     balanceAfter: real("balance_after").notNull(),
-    source: text("source", { enum: ["simulation", "purchase", "seed"] }).notNull(),
+    source: text("source", { enum: ["simulation", "purchase", "seed", "expiry"] }).notNull(),
     createdAt: createdAt(),
   },
   (t) => [index("usage_account_time_idx").on(t.accountId, t.simTime)],
