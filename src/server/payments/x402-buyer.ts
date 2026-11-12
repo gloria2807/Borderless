@@ -27,6 +27,7 @@ import { providerRoutePath, quoteOrderAtomic } from "../providers/x402-seller";
 import { recordEvent } from "../transactions/events";
 import { confirmOnHorizon, explorerTxUrl } from "./horizon";
 import { formatAtomic, ngnToTestnetUsdcAtomic, TESTNET_USDC } from "./pricing";
+import { quantity } from "../../lib/format";
 
 export type PurchaseRow = typeof s.purchases.$inferSelect;
 
@@ -409,7 +410,7 @@ async function recordSuccess(
       category: "fulfilment",
       type: "fulfilment.confirmed",
       severity: "success",
-      title: `${receipt.provider.name} released ${f.quantity} ${f.unit}`,
+      title: `${receipt.provider.name} released ${quantity(f.quantity, f.unit, { precise: true })}`,
       detail: `Simulated balance ${f.balanceBefore} → ${f.balanceAfter} ${f.unit}.${f.demoToken ? ` Demo token ${f.demoToken}.` : ""}`,
       data: { receiptId: receipt.receiptId },
     });

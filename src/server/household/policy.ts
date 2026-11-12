@@ -20,6 +20,7 @@ export interface BudgetRules {
   priorSpendNgn: number;
   periodStart: Date;
   periodEnd: Date;
+  period?: "weekly" | "monthly";
 }
 
 export interface PurchaseLedgerEntry {

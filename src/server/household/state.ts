@@ -52,6 +52,7 @@ export async function loadHousehold(db: Database, householdId: string) {
     priorSpendNgn: budgetRow.priorSpendNgn,
     periodStart: budgetRow.periodStart,
     periodEnd: budgetRow.periodEnd,
+    period: budgetRow.period,
   };
   const ledger: PurchaseLedgerEntry[] = ledgerRows;
   return { household, policy, priorities: policyRow.priorities, budget, budgetId: budgetRow.id, ledger };

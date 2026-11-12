@@ -1,1 +1,94 @@
 @import "tailwindcss";
+
+/*
+ * Borderless design tokens.
+ * Semantic roles are fixed: green = confirmed / primary action, amber = upcoming
+ * shortage / warning, coral = critical / error, cyan = technical detail only.
+ */
+@theme {
+  --color-bg: #0b1110;
+  --color-bg-2: #101916;
+  --color-surface: #151f1b;
+  --color-raised: #1b2722;
+  --color-line: #293831;
+  --color-line-soft: #1f2c26;
+
+  --color-fg: #f1f5ef;
+  --color-fg-2: #a1aea5;
+  --color-fg-3: #718078;
+
+  --color-green: #b8df76;
+  --color-green-deep: #223b25;
+  --color-green-soft: #1c2c20;
+  --color-cyan: #78dce8;
+  --color-coral: #ff907d;
+  --color-amber: #f2c66d;
+
+  --color-amber-soft: #2a2618;
+  --color-coral-soft: #2d1c19;
+  --color-cyan-soft: #15272a;
+
+  --font-sans: var(--font-manrope), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-plex-mono), ui-monospace, "SFMono-Regular", monospace;
+
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+
+  --text-2xs: 0.6875rem;
+  --text-2xs--line-height: 1rem;
+
+  --animate-fade-in: fade-in 240ms ease-out both;
+  --animate-pulse-dot: pulse-dot 1.6s ease-in-out infinite;
+  --animate-credit: credit 900ms ease-out both;
+}
+
+/* Never starts fully transparent: if an animation is paused (background tab), content stays readable. */
+@keyframes fade-in {
+  from { opacity: 0.55; transform: translateY(3px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+@keyframes credit {
+  0% { background-color: color-mix(in srgb, var(--color-green) 22%, transparent); }
+  100% { background-color: transparent; }
+}
+
+@layer base {
+  html {
+    color-scheme: dark;
+    -webkit-text-size-adjust: 100%;
+  }
+  body {
+    background: var(--color-bg);
+    color: var(--color-fg);
+    font-family: var(--font-sans);
+    font-size: 14px;
+    line-height: 1.5;
+    font-feature-settings: "cv11", "ss01";
+    -webkit-font-smoothing: antialiased;
+  }
+  ::selection {
+    background: var(--color-green-deep);
+    color: var(--color-fg);
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-green);
+    outline-offset: 2px;
+    border-radius: var(--radius-sm);
+  }
+  /* Numbers line up in tables and readouts. */
+  .tabular { font-variant-numeric: tabular-nums; }
+  .mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

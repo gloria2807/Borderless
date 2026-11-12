@@ -11,7 +11,14 @@ const STELLAR_SECRET_KEY = /^S[A-Z2-7]{55}$/;
 
 const baseSchema = z.object({
   DATABASE_URL: z.string().default("file:./data/borderless.db"),
-  APP_BASE_URL: z.string().url().default("http://localhost:3000"),
+  /**
+   * Where the agent reaches the provider endpoints. Defaults to this server's own port
+   * (Next.js sets PORT), so the agent never talks to some other local app on :3000.
+   */
+  APP_BASE_URL: z
+    .string()
+    .url()
+    .default(() => `http://localhost:${process.env.PORT ?? "3000"}`),
   // Borderless is testnet-only by design. Mainnet is rejected, not merely discouraged.
   STELLAR_NETWORK: z.literal("stellar:testnet").default("stellar:testnet"),
   STELLAR_RPC_URL: z.string().url().default("https://soroban-testnet.stellar.org"),
