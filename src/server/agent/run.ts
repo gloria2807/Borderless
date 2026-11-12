@@ -15,6 +15,7 @@ import { PROVIDER_MODULES } from "../providers/registry";
 import type { Product } from "../providers/types";
 import { recordEvent } from "../transactions/events";
 import { createPurchase, OPEN_STAGES, PolicyDeniedError, PurchaseConflictError } from "../transactions/purchases";
+import { sweepInterruptedPurchases } from "../transactions/sweep";
 import { forecast } from "../usage/forecast";
 import { recentSamples } from "../usage/simulator";
 import { decide, type Decision, type DecisionInput, type UtilitySnapshot } from "./engine";
@@ -90,6 +91,8 @@ export async function runAgent(
   if (running.has(householdId)) throw new AgentBusyError("Borderless is already assessing this household.");
   running.add(householdId);
   try {
+    // Close out purchases interrupted by a crash/restart before deciding anything new.
+    await sweepInterruptedPurchases(db, householdId);
     const input = await buildDecisionInput(db, householdId);
     const decision = decide(input);
     const explanation = explain(decision);

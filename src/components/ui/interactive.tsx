@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useRef, useState, useTransition, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useId, useRef, useState, useTransition, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { CheckCircle2, CircleAlert, Info, X } from "lucide-react";
 import { Button, cn } from "./primitives";
@@ -160,6 +160,8 @@ export function ConfirmButton({
   disabled?: boolean;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
+  const titleId = useId();
+  const bodyId = useId();
   return (
     <>
       <Button variant={variant} size={size} loading={loading} disabled={disabled} onClick={() => ref.current?.showModal()}>
@@ -167,12 +169,14 @@ export function ConfirmButton({
       </Button>
       <dialog
         ref={ref}
+        aria-labelledby={titleId}
+        aria-describedby={bodyId}
         className="m-auto w-[min(440px,calc(100vw-2rem))] rounded-lg border border-line bg-raised p-0 text-fg backdrop:bg-black/60"
         onClick={(e) => e.target === ref.current && ref.current?.close()}
       >
         <div className="p-5">
-          <h2 className="text-base font-semibold">{title}</h2>
-          <div className="mt-2 text-[13px] text-fg-2">{body}</div>
+          <h2 id={titleId} className="text-base font-semibold">{title}</h2>
+          <div id={bodyId} className="mt-2 text-[13px] text-fg-2">{body}</div>
         </div>
         <div className="flex justify-end gap-2 border-t border-line-soft px-5 py-3">
           <Button variant="ghost" size="sm" onClick={() => ref.current?.close()}>

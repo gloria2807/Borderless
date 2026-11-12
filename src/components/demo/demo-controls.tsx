@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { FastForward, Gauge, Play, RotateCcw, Square, TriangleAlert, X } from "lucide-react";
 import { Button, cn } from "@/components/ui/primitives";
 import { ConfirmButton, Toggle, useApiAction } from "@/components/ui/interactive";
@@ -8,10 +8,13 @@ import { UTILITY_NAMES } from "@/lib/format";
 
 type Kind = "electricity" | "airtime" | "data";
 
+interface ScenarioOption { id: string; name: string; summary: string; expect: string }
+
 interface Props {
   utilities: { kind: Kind; multiplier: number; providerAvailable: boolean }[];
   faults: { key: string; label: string; enabled: boolean }[];
   simNow: string;
+  scenario: { active: string; options: ScenarioOption[] };
   compact?: boolean;
 }
 
@@ -21,10 +24,14 @@ const SPEEDS = [0.5, 1, 2, 3, 5];
  * Operator panel for the demo: move simulated time, change usage, inject failures,
  * reset. Everything here is clearly a demo control, not a household feature.
  */
-export function DemoControls({ utilities, faults, compact }: Props) {
+export function DemoControls({ utilities, faults, scenario, compact }: Props) {
   const ref = useRef<HTMLDialogElement>(null);
   const { run, pending } = useApiAction();
   const [live, setLive] = useState(false);
+  const [picked, setPicked] = useState(scenario.active);
+  // Two instances render (sidebar + mobile header); radio names must not collide across them.
+  const groupName = `scenario-${useId()}`;
+  const pickedScenario = scenario.options.find((o) => o.id === picked) ?? scenario.options[0]!;
   const liveRef = useRef(false);
 
   // Live mode: one simulated hour per tick; Borderless re-assesses after each.
@@ -83,6 +90,48 @@ export function DemoControls({ utilities, faults, compact }: Props) {
           </header>
 
           <div className="flex-1 space-y-6 overflow-y-auto px-5 py-5">
+            <section>
+              <h3 className="text-[13px] font-semibold">Scenario</h3>
+              <p className="mt-0.5 text-[13px] text-fg-3">A starting state. The outcome comes from Borderless&apos;s real decisions, not a script.</p>
+              <div role="radiogroup" aria-label="Demo scenario" className="mt-3 space-y-1.5">
+                {scenario.options.map((o) => (
+                  <label
+                    key={o.id}
+                    className={cn(
+                      "flex cursor-pointer gap-2.5 rounded-md border px-3 py-2 has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-green",
+                      picked === o.id ? "border-green/40 bg-green-soft" : "border-line-soft hover:border-line",
+                    )}
+                  >
+                    <input type="radio" name={groupName} value={o.id} checked={picked === o.id} onChange={() => setPicked(o.id)} className="mt-1 accent-[#b8df76]" />
+                    <span className="min-w-0">
+                      <span className="block text-[13px] font-medium text-fg">
+                        {o.name}
+                        {o.id === scenario.active && <span className="ml-2 text-2xs font-normal text-fg-3">Loaded</span>}
+                      </span>
+                      <span className="block text-2xs text-fg-3">{o.summary}</span>
+                    </span>
+                  </label>
+                ))}
+              </div>
+              <p className="mt-2 text-2xs text-fg-2">
+                <span className="font-semibold">What to watch for:</span> {pickedScenario.expect}
+              </p>
+              <ConfirmButton
+                variant="primary"
+                size="sm"
+                title={`Load "${pickedScenario.name}"?`}
+                body="This resets the simulated household (balances, budget, decisions and purchase history). Testnet transactions already on Stellar are permanent and are not affected."
+                confirmLabel="Load scenario"
+                loading={pending}
+                onConfirm={async () => {
+                  setLive(false);
+                  await run<{ scenario: { name: string } }>("/api/demo/reset", { body: { scenario: picked } }, { success: (d) => ({ title: `Loaded: ${d.scenario.name}`, body: "Press “Assess household now” to let Borderless act." }) });
+                }}
+              >
+                <RotateCcw className="size-3.5" /> Load scenario
+              </ConfirmButton>
+            </section>
+
             <section>
               <h3 className="text-[13px] font-semibold">Simulated time</h3>
               <p className="mt-0.5 text-[13px] text-fg-3">Usage drains each device; Borderless re-assesses after each step.</p>
@@ -149,21 +198,8 @@ export function DemoControls({ utilities, faults, compact }: Props) {
             </section>
           </div>
 
-          <footer className="border-t border-line-soft px-5 py-4">
-            <ConfirmButton
-              variant="danger"
-              size="sm"
-              title="Reset the demo household?"
-              body="Balances, budget, decisions and purchase history return to the starting scenario. Testnet transactions already on Stellar are permanent and are not affected."
-              confirmLabel="Reset demo"
-              loading={pending}
-              onConfirm={async () => {
-                setLive(false);
-                await run("/api/demo/reset", {}, { success: () => ({ title: "Demo household reset" }) });
-              }}
-            >
-              <RotateCcw className="size-3.5" /> Reset demo household
-            </ConfirmButton>
+          <footer className="border-t border-line-soft px-5 py-3 text-2xs text-fg-3">
+            Demo controls operate the simulated household only. Every payment is still a real Stellar testnet transaction.
           </footer>
         </div>
       </dialog>

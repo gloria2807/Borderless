@@ -15,7 +15,9 @@
 
   --color-fg: #f1f5ef;
   --color-fg-2: #a1aea5;
-  --color-fg-3: #718078;
+  /* Brief specifies #718078 for muted text; it measures ~3.9:1 on our surfaces, below
+     WCAG AA (4.5:1) for small text. Lifted to the nearest tone of the same hue that passes. */
+  --color-fg-3: #8a988f;
 
   --color-green: #b8df76;
   --color-green-deep: #223b25;

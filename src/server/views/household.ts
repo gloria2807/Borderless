@@ -16,6 +16,7 @@ import { forecast, type Forecast } from "../usage/forecast";
 import { recentSamples } from "../usage/simulator";
 import type { ExplanationLine } from "../agent/explain";
 import { DEMO_FAULTS, type DemoFaultKey } from "../demo/faults";
+import { DEFAULT_SCENARIO_ID, SCENARIOS } from "../demo/scenarios";
 
 const HOUR = 3_600_000;
 const finite = (n: number) => (Number.isFinite(n) ? n : null);
@@ -327,7 +328,15 @@ export async function getHouseholdOverview(householdId: string) {
   const [latestDecision] = await getDecisions(householdId, 1);
   const attention = await getPurchases(householdId, { limit: 50 });
   const faults = await database.select().from(s.demoFaults);
+  const [scenarioEvent] = await database
+    .select()
+    .from(s.activityEvents)
+    .where(and(eq(s.activityEvents.householdId, householdId), eq(s.activityEvents.type, "demo.scenario_loaded")))
+    .orderBy(desc(s.activityEvents.createdAt))
+    .limit(1);
+  const scenarioId = (scenarioEvent?.data as { scenarioId?: string } | null)?.scenarioId ?? DEFAULT_SCENARIO_ID;
   return {
+    scenario: { active: scenarioId, options: SCENARIOS.map((x) => ({ id: x.id, name: x.name, summary: x.summary, expect: x.expect })) },
     household: { id: state.household.id, name: state.household.name, simNow: simNow.toISOString(), currency: state.household.currency },
     budget: { ...state.budget, periodStart: state.budget.periodStart.toISOString(), periodEnd: state.budget.periodEnd.toISOString(), summary },
     policy: state.policy,

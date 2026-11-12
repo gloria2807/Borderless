@@ -108,7 +108,7 @@ function describePurchase(p: PlannedPurchase, decision: Decision): string {
     const kept = p.reservedFor.map((r) => `${noun(r.kind)} (${naira(r.amountNgn)})`).join(" and ");
     return `Buying ${what}, which ${cover}. I'm buying less than I otherwise would so the budget also covers ${kept}.${ranked}`;
   }
-  if (p.basis === "best_within_limits") return `Buying ${what}, which ${cover} — the largest option within your limits that doesn't need your approval.${ranked}`;
+  if (p.basis === "best_within_limits") return `Buying ${what}, which ${cover}. That's the most I can buy within your budget and limits without asking you.${ranked}`;
   return `Buying ${what}, which ${cover}.${ranked}`;
 }
 

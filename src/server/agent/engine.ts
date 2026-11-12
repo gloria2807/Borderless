@@ -350,8 +350,12 @@ export function decide(input: DecisionInput): Decision {
 
     // Nothing allowed. Work out why, and what we would buy if the constraint were lifted.
     const { reason, violations } = deferralFromCandidates(evaluated);
-    // Recommendation for the owner: the right product for the need, regardless of limits.
-    const wouldBuy = evaluated.filter((c) => c.meetsPreferred).sort(byPrice)[0] ?? [...evaluated].sort(byCoverage)[0];
+    // Recommendation for the owner. When money is the constraint, suggest the smallest
+    // purchase that restores real service; otherwise, the right product for the need.
+    const moneyBound = reason === "insufficient_budget" || reason === "insufficient_authority" || reason === "over_purchase_limit";
+    const wouldBuy = moneyBound
+      ? (evaluated.filter((c) => c.meetsMinimum).sort(byPrice)[0] ?? [...evaluated].sort(byCoverage)[0])
+      : (evaluated.filter((c) => c.meetsPreferred).sort(byPrice)[0] ?? [...evaluated].sort(byCoverage)[0]);
     const competing = selected.length > 0 && (reason === "insufficient_budget" || reason === "insufficient_authority");
     defer(reason, {
       violations,

@@ -20,6 +20,8 @@ function statusLine(o: Awaited<ReturnType<typeof getHouseholdOverview>>) {
   if (out.length) return { tone: "text-coral", text: `${out.map((u) => UTILITY_NAMES[u.kind]).join(" and ")} ${out.length > 1 ? "have" : "has"} run out` };
   if (critical.length) return { tone: "text-coral", text: `${UTILITY_NAMES[critical[0]!.kind]} will run out in ${durationLong(critical[0]!.forecast.hoursRemaining)}` };
   if (low.length) return { tone: "text-amber", text: `${low.map((u) => UTILITY_NAMES[u.kind]).join(" and ")} ${low.length > 1 ? "are" : "is"} running low` };
+  if (o.needsAttention.length) return { tone: "text-amber", text: "Powered and connected, one purchase needs attention" };
+  if (o.awaitingApproval.length) return { tone: "text-amber", text: "Powered and connected, a purchase awaits your approval" };
   return { tone: "text-green", text: "Powered and connected" };
 }
 

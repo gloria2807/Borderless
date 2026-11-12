@@ -17,7 +17,6 @@ export function UtilitySummary({ u }: { u: UtilityView }) {
     <Link
       href={`/household#${u.kind}`}
       className="group block rounded-lg border border-line bg-surface p-4 transition-colors hover:border-fg-3/60"
-      aria-label={`${UTILITY_NAMES[u.kind]}: ${quantity(u.balance, u.unit)}, ${urgency.label}. Open device.`}
     >
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-2">

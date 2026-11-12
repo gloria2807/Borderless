@@ -18,6 +18,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     utilities: o.utilities.map((u) => ({ kind: u.kind, multiplier: u.usageMultiplier, providerAvailable: u.providerAvailable })),
     faults: o.faults,
     simNow: o.household.simNow,
+    scenario: o.scenario,
   };
 
   return (

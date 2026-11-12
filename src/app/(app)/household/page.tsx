@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { ManualBuy } from "@/components/devices/manual-buy";
 import { VirtualMeter } from "@/components/devices/meter";
 import { VirtualPhone } from "@/components/devices/phone";
@@ -54,9 +55,9 @@ export default async function HouseholdPage() {
                     {u.history.map((h) => (
                       <li key={h.id} className="flex items-center justify-between gap-3 px-5 py-2.5 text-[13px]">
                         <div className="min-w-0">
-                          <a href={`/transactions/${h.id}`} className="font-medium text-fg hover:underline">
+                          <Link href={`/transactions/${h.id}`} className="font-medium text-fg hover:underline">
                             {h.label}
-                          </a>
+                          </Link>
                           <p className="text-2xs text-fg-3">{dayTime(h.at)}</p>
                         </div>
                         <div className="text-right">
