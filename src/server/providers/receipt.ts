@@ -1,4 +1,4 @@
-import type { Unit } from "./catalog";
+import type { Unit } from "./types";
 
 /** Structured receipt returned by every demo provider. Payment and fulfilment are reported separately. */
 export interface ProviderReceipt {

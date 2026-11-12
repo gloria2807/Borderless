@@ -19,7 +19,9 @@
     "db:reset": "tsx scripts/db-reset.ts",
     "wallets:setup": "tsx scripts/wallets-setup.ts",
     "wallets:status": "tsx scripts/wallets-status.ts",
-    "demo:purchase": "tsx scripts/demo-purchase.ts"
+    "demo:purchase": "tsx scripts/demo-purchase.ts",
+    "demo:providers": "tsx scripts/demo-providers.ts",
+    "demo:recovery": "tsx scripts/demo-failure-recovery.ts"
   },
   "dependencies": {
     "@libsql/client": "0.18.0",

@@ -17,8 +17,8 @@ import * as s from "../db/schema";
 import type { UtilityKind } from "../db/schema";
 import { newId } from "../lib/ids";
 import { isFaultEnabled } from "../demo/faults";
-import { PROVIDERS, ProductError, resolveProduct } from "./catalog";
-import { applyFulfilment } from "./fulfilment";
+import { PROVIDER_MODULES, PROVIDERS, resolveProduct } from "./registry";
+import { ProductError, type Product, type Tx } from "./types";
 import { fulfilmentRetrySchema, providerOrderSchema, type ProviderOrder } from "./order";
 import { createRequestContext } from "./http-adapter";
 import { getSeller } from "./x402-seller";
@@ -41,7 +41,8 @@ const globalLocks = globalThis as unknown as { __borderlessProviderLocks?: Set<s
 const inFlight = (globalLocks.__borderlessProviderLocks ??= new Set());
 
 export async function handleProviderPurchase(kind: UtilityKind, request: Request): Promise<Response> {
-  const provider = PROVIDERS[kind];
+  const module = PROVIDER_MODULES[kind];
+  const provider = module.definition;
 
   // 1. Validate the order.
   let raw: unknown;
@@ -69,18 +70,12 @@ export async function handleProviderPurchase(kind: UtilityKind, request: Request
   if (!account) {
     return json(404, { code: "unknown_account", message: `No ${kind} account matches that identifier.` });
   }
-  if (kind !== "electricity") {
-    if (!order.network || order.network !== account.network) {
-      return json(422, { code: "network_mismatch", message: "The network does not match the recipient line." });
-    }
-    if (!provider.networks.includes(order.network)) {
-      return json(422, { code: "unsupported_network", message: `${provider.name} does not serve that network.` });
-    }
-  }
+  const rejection = module.validateOrder(order, account);
+  if (rejection) return json(rejection.status, { code: rejection.code, message: rejection.message });
 
   let product;
   try {
-    product = resolveProduct(kind, order);
+    product = module.resolveProduct(order);
   } catch (err) {
     if (err instanceof ProductError) return json(422, { code: err.code, message: err.message });
     throw err;
@@ -139,20 +134,40 @@ async function settleAndFulfil(
   const seller = await getSeller(kind);
   const context = createRequestContext(request, order);
 
-  // 3. Verify with the facilitator.
-  const verified = await seller.processHTTPRequest(context);
+  // 3. Verify with the facilitator. A failure here is definitive: nothing was submitted.
+  let verified;
+  try {
+    verified = await seller.processHTTPRequest(context);
+  } catch (err) {
+    return json(503, {
+      code: "facilitator_unavailable",
+      phase: "verify",
+      charged: false,
+      message: `The payment facilitator could not verify the payment (${(err as Error).message}). Nothing was charged.`,
+    });
+  }
   if (verified.type === "payment-error") return fromInstructions(verified.response);
   if (verified.type !== "payment-verified") {
     return json(500, { code: "x402_misconfigured", message: "Payment protection is not active for this route." });
   }
 
   // 4. Settle on Stellar testnet via the facilitator. Nothing has been released yet.
-  const settled = await seller.processSettlement(
-    verified.paymentPayload,
-    verified.paymentRequirements,
-    verified.declaredExtensions,
-    { request: context },
-  );
+  //    A failure here is NOT definitive: the transaction may still land on-chain.
+  let settled;
+  try {
+    settled = await seller.processSettlement(
+      verified.paymentPayload,
+      verified.paymentRequirements,
+      verified.declaredExtensions,
+      { request: context },
+    );
+  } catch (err) {
+    return json(502, {
+      code: "settlement_unconfirmed",
+      phase: "settle",
+      message: `Settlement did not complete cleanly (${(err as Error).message}). The payment outcome must be reconciled before retrying.`,
+    });
+  }
   if (!settled.success || !settled.transaction) {
     if (settled.success) {
       return json(502, { code: "settlement_missing_tx", message: "Facilitator reported success without a transaction hash." });
@@ -202,6 +217,34 @@ async function settleAndFulfil(
 }
 
 /**
+ * Generic device write: the provider module decides WHAT changes; this applies it
+ * atomically (balance guarded by its previous value) and appends a usage record.
+ */
+async function applyToDevice(tx: Tx, kind: UtilityKind, product: Product, accountId: string, txHash: string, simNow: Date) {
+  const [balance] = await tx.select().from(s.utilityBalances).where(eq(s.utilityBalances.accountId, accountId));
+  if (!balance) throw new Error(`Virtual device for account ${accountId} not found`);
+  if (balance.unit !== product.unit) throw new Error(`Unit mismatch: device ${balance.unit}, product ${product.unit}`);
+
+  const outcome = PROVIDER_MODULES[kind].fulfil({ product, balance, txHash, simNow });
+  const updated = await tx
+    .update(s.utilityBalances)
+    .set({ balance: outcome.balanceAfter, ...outcome.deviceUpdate, updatedAt: new Date() })
+    .where(and(eq(s.utilityBalances.accountId, accountId), eq(s.utilityBalances.balance, balance.balance)))
+    .returning({ accountId: s.utilityBalances.accountId });
+  if (updated.length !== 1) throw new Error("Device balance changed concurrently; fulfilment will be retried");
+
+  await tx.insert(s.usageRecords).values({
+    id: newId("use"),
+    accountId,
+    simTime: simNow,
+    delta: balance.balance - outcome.balanceAfter,
+    balanceAfter: outcome.balanceAfter,
+    source: "purchase",
+  });
+  return { ...outcome, balanceBefore: balance.balance };
+}
+
+/**
  * Release (or re-release) the utility for a settlement. Safe to call repeatedly:
  * a settlement that is already fulfilled is never fulfilled twice.
  */
@@ -224,7 +267,7 @@ export async function fulfilSettlement(settlementId: string, simNow: Date): Prom
       }
 
       const product = resolveProduct(order.kind, order);
-      const outcome = await applyFulfilment(tx, { kind: order.kind, product, accountId: order.accountId, txHash: stl.txHash, simNow });
+      const outcome = await applyToDevice(tx, order.kind, product, order.accountId, stl.txHash, simNow);
       await tx.insert(s.fulfilments).values({
         id: newId("ful"),
         purchaseId: stl.purchaseId,

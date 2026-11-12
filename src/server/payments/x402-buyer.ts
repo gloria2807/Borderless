@@ -292,6 +292,10 @@ export async function executePurchase(db: Database, purchaseId: string, options:
       }
       throw new StepError("payment_rejected", `${reason} Nothing was charged.`, "no");
     }
+    if (paid.status === 503 && (body as { code?: string; charged?: boolean } | null)?.code === "facilitator_unavailable") {
+      // Provider states the facilitator failed at verification — nothing was submitted on-chain.
+      throw new StepError("facilitator_unavailable", (body as { message?: string }).message ?? "The payment facilitator is unavailable. Nothing was charged.", "no");
+    }
     if (paid.status === 409) {
       throw new StepError((body as { code?: string } | null)?.code ?? "conflict", (body as { message?: string } | null)?.message ?? "Provider reported a conflict.", "unknown");
     }

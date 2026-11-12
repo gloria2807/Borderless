@@ -5,7 +5,7 @@ import type { PurchaseStage, UtilityKind } from "../db/schema";
 import { evaluateSpendingAuthority, type Violation } from "../household/policy";
 import { loadHousehold } from "../household/state";
 import { newId } from "../lib/ids";
-import { resolveProduct } from "../providers/catalog";
+import { resolveProduct } from "../providers/registry";
 import { recordEvent } from "./events";
 
 /** Stages that hold the utility "busy" — a new purchase for the same account must wait. */

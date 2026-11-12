@@ -7,7 +7,7 @@
 import { sql } from "drizzle-orm";
 import type { Database } from "../db/client";
 import * as s from "../db/schema";
-import { PROVIDERS } from "../providers/catalog";
+import { PROVIDERS } from "../providers/registry";
 
 export const DEMO_HOUSEHOLD_ID = "hh_demo";
 export const DEMO_ACCOUNTS = {

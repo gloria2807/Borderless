@@ -15,7 +15,7 @@ import { ExactStellarScheme } from "@x402/stellar/exact/server";
 import { env, providerPayTo } from "../config/env";
 import type { UtilityKind } from "../db/schema";
 import { ngnToTestnetUsdcAtomic, TESTNET_USDC } from "../payments/pricing";
-import { PROVIDERS, resolveProduct } from "./catalog";
+import { PROVIDERS, resolveProduct } from "./registry";
 import type { ProviderOrder } from "./order";
 
 /** Payment requirements stay valid for 5 minutes. */
