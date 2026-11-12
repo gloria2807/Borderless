@@ -1,6 +1,6 @@
 # Borderless — Milestone 0: Discovery, Architecture & Payment Plan
 
-_Date: 2026-11-12. Status: proposed, awaiting founder sign-off on the items in §7._
+_Date: 2026-11-12. Status: **historical**. Approved and implemented; kept as the original discovery record. The [README](../README.md) describes the system as built. Changes since this plan: testnet USDC is acquired automatically on the testnet DEX (no manual faucet step), and the agent's decision engine gained budget sharing across competing needs._
 
 ## 1. Workspace findings
 
