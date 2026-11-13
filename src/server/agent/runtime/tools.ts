@@ -264,13 +264,23 @@ export async function payAndLog(db: Database, runId: string, purchaseId: string,
  * needs it. A utility with plenty of service left, or whose usage is flagged as unusual
  * (owner review first), is refused before any quote is spent.
  */
-export async function necessityFor(ctx: ToolContext, kind: UtilityKind): Promise<{ needed: boolean; detail: string }> {
+export async function necessityFor(ctx: ToolContext, kind: UtilityKind): Promise<{ needed: boolean; detail: string; maxAmountNgn?: number }> {
   const input = await buildDecisionInput(ctx.db, ctx.householdId);
   const u = input.utilities.find((x) => x.kind === kind);
   if (!u) return { needed: false, detail: `The household has no ${kind} account.` };
   const f = u.forecast;
   const left = Number.isFinite(f.hoursRemaining) ? `about ${Math.round(f.hoursRemaining)} hours` : "an unlimited time";
-  if (f.unusualUsage) return { needed: false, detail: `${kind} use is ${f.usageRatio.toFixed(1)}x the usual rate. It is flagged for the owner's review; do not buy more automatically.` };
+  if (f.unusualUsage) {
+    const dx = input.diagnoses?.[kind];
+    if (!dx) {
+      return { needed: false, detail: `${kind} use is ${f.usageRatio.toFixed(1)}x the usual rate and the cause is unknown. Buy a diagnostic first if it is worth its price, or leave it for the owner's review; do not buy more ${kind} blind.` };
+    }
+    if (dx.finding === "stuck_load" || dx.finding === "meter_overreading") {
+      const plan = decide(input).selected.find((p) => p.kind === kind);
+      if (!plan) return { needed: false, detail: `The diagnostic found the extra ${kind} use avoidable (${dx.finding.replace(/_/g, " ")}) and there is enough left for now. Tell the owner what to fix; do not buy more.` };
+      return { needed: true, detail: `The extra use is avoidable, but the meter is nearly out: only minimal relief (up to ${plan.product.amountNgn} NGN, sized for the normal rate) is justified.`, maxAmountNgn: plan.product.amountNgn };
+    }
+  }
   if (f.urgency === "ok") return { needed: false, detail: `${kind} has ${left} of service left. A purchase is not needed now.` };
   return { needed: true, detail: `${kind} has ${left} of service left (${f.urgency}).` };
 }
@@ -436,6 +446,7 @@ export const TOOLS: ToolDefinition[] = [
         recommended: d.selected.map((p) => ({ utility: p.kind, provider_id: p.product.providerId, product_code: p.product.code, label: p.product.label, price_ngn: p.product.amountNgn, service_hours_after: r1(p.coverageHours), basis: p.basis, needs_owner_approval: p.requiresApproval })),
         deferred: d.deferred.map((x) => ({ utility: x.kind, reason: x.reason, outranked_by: x.outrankedBy })),
         flags: d.flags,
+        information: d.information.map((i) => ({ utility: i.kind, action: i.action, reason: i.reason, provider_id: i.providerId ?? null, price_ngn: i.priceNgn ?? null, purchase_it_could_change_ngn: i.stakeNgn ?? null, alternatives: i.alternatives ?? [] })),
         ranking: d.assessments.map((a) => ({ utility: a.kind, urgency: a.urgency, score: a.score })),
         budget_after_ngn: d.budgetImpact.remainingAfterNgn,
         options_considered: d.options.map((o) => ({
@@ -516,6 +527,11 @@ export const TOOLS: ToolDefinition[] = [
       const q = ctx.quotes.get(args.quote_id);
       if (!q) return { status: "refused", reason: "Unknown quote_id. Only quotes from request_quote in this run can be used." };
       const need = await necessityFor(ctx, q.utility);
+      if (need.needed && need.maxAmountNgn !== undefined && q.amountNgn > need.maxAmountNgn) {
+        const detail = `The diagnosis makes only minimal relief worthwhile: up to ${need.maxAmountNgn} NGN, not ${q.amountNgn}.`;
+        await event(ctx, { stage: "deciding", type: "purchase.not_needed", utility: q.utility, decision: "no_purchase", reason: detail });
+        return { status: "refused", reason: detail, note: "Nothing was paid. Quote a smaller product." };
+      }
       if (!need.needed) {
         await event(ctx, { stage: "deciding", type: "purchase.not_needed", utility: q.utility, decision: "no_purchase", reason: need.detail });
         return { status: "refused", reason: need.detail, note: "Nothing was paid. This is the right outcome when a utility has enough left." };

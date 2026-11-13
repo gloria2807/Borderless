@@ -110,6 +110,10 @@ function describePurchase(p: PlannedPurchase, decision: Decision): string {
     const kept = p.reservedFor.map((r) => `${noun(r.kind)} (${naira(r.amountNgn)})`).join(" and ");
     return `Buying ${what}, which ${cover}. I'm buying less than I otherwise would so the budget also covers ${kept}.${ranked}`;
   }
+  if (p.basis === "diagnosed_minimum") {
+    const dx = decision.information?.find((i) => i.kind === p.kind && i.code === "avoidable_use");
+    return `Buying only ${what}, enough for about two days at the normal rate, because the meter is nearly out.${dx ? " The extra use is avoidable, so I'm not buying for the current rate." : ""}${ranked}`;
+  }
   if (p.basis === "best_within_limits") return `Buying ${what}, which ${cover}. That's the most I can buy within your budget and limits without asking you.${ranked}`;
   return `Buying ${what}, which ${cover}.${ranked}`;
 }
@@ -120,6 +124,8 @@ function describeDeferral(d: Deferral, decision: Decision): ExplanationLine {
   const n = noun(d.kind);
   const text: Record<typeof d.reason, string> = {
     purchase_in_progress: `A ${n} purchase is already in progress, so I'm not starting another.`,
+    awaiting_diagnosis: `I'm holding the ${n} purchase until a paid diagnostic explains the unusual use; its finding decides how much to buy.${rec}`,
+    diagnosed_avoidable: `The diagnostic found the extra ${n} use avoidable, and there's enough left for now, so I'm not buying more. Fixing the cause matters more than topping up.`,
     unusual_usage: `${NAME[d.kind]} is being used much faster than usual. I'm flagging this for your review rather than automatically buying more — something on the line may be using more ${n} than expected.${rec}`,
     provider_unavailable: `The ${n} provider is unavailable right now, so I can't buy ${n}. I'll check again on the next run.`,
     service_not_approved: `${NAME[d.kind]} isn't an approved service for automatic purchases.${rec}`,
@@ -155,6 +161,10 @@ export function explain(decision: Decision): Explanation {
     if (alt) lines.push(alt);
   }
   for (const d of decision.deferred) lines.push(describeDeferral(d, decision));
+  for (const i of decision.information ?? []) {
+    const line = describeInformation(i);
+    if (line) lines.push(line);
+  }
   if (decision.selected.length > 0) {
     lines.push({ kind: "decision", utility: null, text: `After this, ${naira(decision.budgetImpact.remainingAfterNgn)} of the budget will remain.` });
   }
@@ -211,14 +221,31 @@ function describeProviderChoice(p: PlannedPurchase, decision: Decision): Explana
   return { kind: "decision", utility: p.kind, text: `I compared ${others.length + 1} providers; ${chosen} gives the household the best value for this need.` };
 }
 
+/** Whether information was (or will be) bought before deciding, and why. */
+function describeInformation(i: Decision["information"][number]): ExplanationLine | null {
+  if (i.action === "buy") {
+    const alt = i.alternatives?.length ? ` Not ${i.alternatives.map((a) => `${a.name} (${naira(a.priceNgn)}): ${a.why.replace(/\.$/, "").replace(/^./, (c) => c.toLowerCase())}`).join("; ")}.` : "";
+    return { kind: "decision", utility: i.kind, text: `${i.reason} Buying a diagnostic from ${i.providerName} for ${naira(i.priceNgn ?? 0)}.${alt}` };
+  }
+  if (i.action === "not_worth_it") return { kind: "constraint", utility: i.kind, text: `Not buying a diagnostic: ${i.reason.charAt(0).toLowerCase()}${i.reason.slice(1)}` };
+  if (i.code === "genuine_use") return { kind: "observation", utility: i.kind, text: `Diagnostic finding: ${i.reason} So I'm sizing the purchase for the current rate.` };
+  if (i.code === "avoidable_use") return { kind: "observation", utility: i.kind, text: `Diagnostic finding: ${i.reason}` };
+  return null;
+}
+
 function headlineFor(d: Decision): string {
   const buying = d.selected.filter((p) => !p.requiresApproval);
   const approval = d.selected.filter((p) => p.requiresApproval);
   if (buying.length) return `Buying ${buying.map((p) => `${noun(p.kind)} (${naira(p.product.amountNgn)})`).join(" and ")}`;
   if (approval.length) return `${NAME[approval[0]!.kind]} purchase needs your approval`;
+  const info = (d.information ?? []).find((i) => i.action === "buy");
+  if (info) return `Checking unusual ${noun(info.kind)} use first (diagnostic, ${naira(info.priceNgn ?? 0)})`;
+  if (d.deferred.some((x) => x.reason === "diagnosed_avoidable")) return `${NAME[d.deferred.find((x) => x.reason === "diagnosed_avoidable")!.kind]} use is avoidable — fix the cause before buying more`;
   if (d.deferred.some((x) => x.reason === "unusual_usage")) return `Unusual ${noun(d.deferred.find((x) => x.reason === "unusual_usage")!.kind)} usage — review before buying`;
   const blocked = d.deferred.find((x) => x.reason !== "purchase_in_progress");
   if (blocked) return `Can't buy ${noun(blocked.kind)} — ${blocked.reason.replace(/_/g, " ")}`;
   if (d.deferred.length) return "Purchase already in progress";
+  const watching = (d.information ?? []).find((i) => i.code === "not_urgent");
+  if (watching) return `${NAME[watching.kind]} use is up — watching; no purchase needed yet`;
   return "Household is powered and connected";
 }

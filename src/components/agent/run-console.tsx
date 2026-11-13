@@ -17,6 +17,7 @@ const STAGES: { key: string; label: string }[] = [
   { key: "planning", label: "Planning" },
   { key: "observing", label: "Observing" },
   { key: "analysing", label: "Analysing" },
+  { key: "identifying_need", label: "Identifying a need" },
   { key: "discovering", label: "Discovering" },
   { key: "comparing", label: "Comparing" },
   { key: "deciding", label: "Deciding" },
@@ -27,6 +28,7 @@ const STAGES: { key: string; label: string }[] = [
   { key: "settling", label: "Settling" },
   { key: "verifying_fulfilment", label: "Verifying" },
   { key: "updating_household", label: "Household updated" },
+  { key: "using_result", label: "Acting on the result" },
   { key: "reassessing", label: "Reassessing" },
   { key: "finished", label: "Finished" },
 ];
@@ -37,6 +39,7 @@ const PHASE: Record<string, { label: string; cls: string }> = {
   planning: { label: "Plan", cls: "text-fg-2 border-line" },
   observing: { label: "Observe", cls: "text-cyan border-cyan/25" },
   analysing: { label: "Forecast", cls: "text-cyan border-cyan/25" },
+  identifying_need: { label: "Need", cls: "text-amber border-amber/25" },
   discovering: { label: "Discovery", cls: "text-fg-2 border-line" },
   comparing: { label: "Discovery", cls: "text-fg-2 border-line" },
   deciding: { label: "Decision", cls: "text-green border-green/30" },
@@ -47,6 +50,7 @@ const PHASE: Record<string, { label: string; cls: string }> = {
   settling: { label: "Payment", cls: "text-cyan border-cyan/25" },
   verifying_fulfilment: { label: "Fulfilment", cls: "text-green border-green/30" },
   updating_household: { label: "Fulfilment", cls: "text-green border-green/30" },
+  using_result: { label: "Using result", cls: "text-green border-green/30" },
   reassessing: { label: "Reassess", cls: "text-fg-2 border-line" },
   finished: { label: "Result", cls: "text-fg-2 border-line" },
 };
@@ -210,6 +214,9 @@ function buildItems(events: RunEventDTO[]): Item[] {
       }
       case "planner.decision":
         items.push({ ...base, title: "Decision (allocation engine)", body: e.reason, tone: "positive", details: <Raw label="Options and budget" value={e.result} /> });
+        break;
+      case "planner.reassessed":
+        items.push({ ...base, title: "Acting on the result", body: e.reason, tone: "info" });
         break;
       case "planner.adapted":
         items.push({ ...base, title: e.decision === "try_alternative" ? "Adapted: trying another provider" : "Adapted: no alternative", body: e.reason, tone: "warning" });

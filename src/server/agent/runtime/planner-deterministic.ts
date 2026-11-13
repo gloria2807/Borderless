@@ -33,15 +33,36 @@ export async function runDeterministicPlanner(ctx: ToolContext): Promise<Planner
   for (const utility of ["electricity", "airtime", "data"] as const) await call("inspect_utility", { utility });
   await call("get_allocation_recommendation", {});
 
-  const decision = decide(await buildDecisionInput(ctx.db, ctx.householdId));
-  const explanation = explain(decision);
-  await appendRunEvent(ctx.db, ctx.runId, {
-    stage: "deciding",
-    type: "planner.decision",
-    decision: decision.outcome,
-    reason: explanation.reasoning,
-    result: { lines: explanation.lines, budget: decision.budgetImpact, options: decision.options, not_needed: decision.notNeeded },
-  });
+  const record = async (d: ReturnType<typeof decide>) => {
+    const e = explain(d);
+    await appendRunEvent(ctx.db, ctx.runId, {
+      stage: "deciding",
+      type: "planner.decision",
+      decision: d.outcome,
+      reason: e.reasoning,
+      result: { lines: e.lines, budget: d.budgetImpact, options: d.options, not_needed: d.notNeeded, information: d.information },
+    });
+    return e;
+  };
+  let decision = decide(await buildDecisionInput(ctx.db, ctx.householdId));
+  let explanation = await record(decision);
+
+  // Procurement: when the decision says information is worth buying first, buy it through
+  // x402, then decide again with the report. Once only; never a fixed sequence.
+  const toBuy = decision.information.filter((i) => i.action === "buy" && i.providerId);
+  if (toBuy.length) {
+    let learned = false;
+    for (const info of toBuy) {
+      await call("discover_information_services", { utility: info.kind });
+      const r = (await call("buy_information", { provider_id: info.providerId, reason: info.reason })) as { status?: string; report?: unknown };
+      if (r.status === "completed" && r.report) learned = true;
+    }
+    if (learned) {
+      await appendRunEvent(ctx.db, ctx.runId, { stage: "using_result", type: "planner.reassessed", reason: "Re-deciding with the diagnostic report." });
+      decision = decide(await buildDecisionInput(ctx.db, ctx.householdId));
+      explanation = await record(decision);
+    }
+  }
 
   const attempt = async (plan: PlannedPurchase, why: string): Promise<Attempt> => {
     const quote = (await call("request_quote", { utility: plan.kind, provider_id: plan.product.providerId, product_code: plan.product.code })) as { quote_id?: string; error?: string };

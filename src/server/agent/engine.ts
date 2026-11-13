@@ -57,6 +57,45 @@ export interface DecisionInput {
   budget: BudgetRules;
   ledger: PurchaseLedgerEntry[];
   products: Record<UtilityKind, Product[]>;
+  /** Paid information services that could explain a utility's usage (e.g. meter diagnostics). */
+  informationOffers?: Partial<Record<UtilityKind, InformationOffer[]>>;
+  /** The latest paid diagnosis per utility, if one was bought recently. */
+  diagnoses?: Partial<Record<UtilityKind, Diagnosis>>;
+}
+
+export interface InformationOffer {
+  providerId: string;
+  name: string;
+  priceNgn: number;
+  available: boolean;
+  detail: "basic" | "detailed";
+}
+
+/** What a paid diagnostic found (from its report; provider data). */
+export interface Diagnosis {
+  purchaseId: string;
+  providerId: string;
+  finding: "stuck_load" | "extra_occupancy" | "meter_overreading" | "normal" | "insufficient_data";
+  summary: string;
+  ownerAction: string | null;
+  expectedNormalPerHour: number;
+  observedPerHour: number;
+}
+
+/** Whether buying information is worth it for a utility, and why. */
+export interface InformationDecision {
+  kind: UtilityKind;
+  action: "buy" | "not_worth_it" | "diagnosed";
+  /** Machine-readable reason. */
+  code: "unexplained_usage" | "not_urgent" | "too_expensive" | "outside_limits" | "no_offer" | "genuine_use" | "avoidable_use" | "inconclusive";
+  reason: string;
+  providerId?: string;
+  providerName?: string;
+  priceNgn?: number;
+  /** The purchase the information could change (what we'd otherwise buy). */
+  stakeNgn?: number;
+  /** Other offers, and why they were not chosen. */
+  alternatives?: { providerId: string; name: string; priceNgn: number; why: string }[];
 }
 
 export interface Assessment {
@@ -85,12 +124,14 @@ export interface PlannedPurchase {
   requiresApproval: boolean;
   /** Restores less than the minimum coverage — best available within limits. */
   partial: boolean;
-  basis: "preferred" | "best_within_limits" | "partial_relief" | "budget_shared";
+  basis: "preferred" | "best_within_limits" | "partial_relief" | "budget_shared" | "diagnosed_minimum";
   /** Budget deliberately left for these later needs when sizing this purchase. */
   reservedFor: { kind: UtilityKind; amountNgn: number }[];
 }
 
 export type DeferralReason =
+  | "awaiting_diagnosis"
+  | "diagnosed_avoidable"
   | "purchase_in_progress"
   | "unusual_usage"
   | "provider_unavailable"
@@ -118,7 +159,7 @@ export interface Flag {
   usageRatio: number;
 }
 
-export type DecisionOutcome = "no_action" | "purchase_started" | "awaiting_approval" | "blocked" | "flagged";
+export type DecisionOutcome = "no_action" | "purchase_started" | "buying_information" | "awaiting_approval" | "blocked" | "flagged";
 
 export interface BudgetImpact {
   remainingBeforeNgn: number;
@@ -170,6 +211,8 @@ export interface Decision {
   options: UtilityOptions[];
   /** Utilities that were checked and need nothing now. */
   notNeeded: NotNeeded[];
+  /** Whether to buy information before deciding a utility, per utility with unexplained use. */
+  information: InformationDecision[];
 }
 
 // ── Engine ──────────────────────────────────────────────────────────────────
@@ -306,6 +349,66 @@ function deferralFromCandidates(candidates: Candidate[]): { reason: DeferralReas
   return { reason, violations: reference.violations };
 }
 
+/**
+ * A diagnostic is worth buying only if it could change a purchase that matters: its price
+ * must be a small share of the purchase it could change. Documented, deliberate tunable.
+ */
+export const VALUE_OF_INFORMATION_SHARE = 0.2;
+
+const AVOIDABLE: Diagnosis["finding"][] = ["stuck_load", "meter_overreading"];
+
+function decideInformation(u: UtilitySnapshot, stakeNgn: number, input: DecisionInput, ledger: PurchaseLedgerEntry[]): InformationDecision {
+  const offers = [...(input.informationOffers?.[u.kind] ?? [])].sort((a, b) => a.priceNgn - b.priceNgn);
+  const ratio = u.forecast.usageRatio.toFixed(1);
+  if (!offers.length) return { kind: u.kind, action: "not_worth_it", code: "no_offer", reason: `No information service can explain the ${ratio}× ${u.kind} use, so I can't check it before buying.`, stakeNgn };
+  const maxPrice = Math.floor(stakeNgn * VALUE_OF_INFORMATION_SHARE);
+  const judged = offers.map((o) => {
+    const authority = evaluateSpendingAuthority(
+      { kind: u.kind, providerId: o.providerId, providerAvailable: o.available, network: u.network, amountNgn: o.priceNgn, initiatedBy: "agent", serviceType: "meter_diagnostic" },
+      input.policy,
+      input.budget,
+      ledger,
+      input.now,
+    );
+    const why =
+      authority.outcome === "deny"
+        ? (authority.violations[0]?.message ?? "Refused by your spending rules.")
+        : authority.outcome === "require_approval"
+          ? "Would need your approval."
+          : o.priceNgn > maxPrice
+            ? `Costs ${ngn(o.priceNgn)}, more than ${Math.round(VALUE_OF_INFORMATION_SHARE * 100)}% of the ${ngn(stakeNgn)} purchase it could change.`
+            : null;
+    return { o, why, authority: authority.outcome };
+  });
+  const chosen = judged.find((j) => j.why === null);
+  if (!chosen) {
+    const priceBlocked = judged.every((j) => j.authority === "allow" && j.why?.startsWith("Costs"));
+    return {
+      kind: u.kind,
+      action: "not_worth_it",
+      code: priceBlocked ? "too_expensive" : "outside_limits",
+      reason: priceBlocked
+        ? `A diagnostic would cost more than it could save: the cheapest is ${ngn(offers[0]!.priceNgn)} against a ${ngn(stakeNgn)} purchase.`
+        : `Your rules don't allow buying a diagnostic now (${judged[0]!.why})`,
+      stakeNgn,
+      alternatives: judged.map((j) => ({ providerId: j.o.providerId, name: j.o.name, priceNgn: j.o.priceNgn, why: j.why ?? "" })),
+    };
+  }
+  return {
+    kind: u.kind,
+    action: "buy",
+    code: "unexplained_usage",
+    reason: `${u.kind[0]!.toUpperCase() + u.kind.slice(1)} use is ${ratio}× usual and hourly totals can't say why. A ${ngn(chosen.o.priceNgn)} diagnostic could change a ${ngn(stakeNgn)} purchase, so it is worth checking first.`,
+    providerId: chosen.o.providerId,
+    providerName: chosen.o.name,
+    priceNgn: chosen.o.priceNgn,
+    stakeNgn,
+    alternatives: judged
+      .filter((j) => j !== chosen)
+      .map((j) => ({ providerId: j.o.providerId, name: j.o.name, priceNgn: j.o.priceNgn, why: j.why ?? (j.o.priceNgn > chosen.o.priceNgn ? `Costs ${ngn(j.o.priceNgn - chosen.o.priceNgn)} more; its extra detail would not change the purchase.` : "Not chosen.") })),
+  };
+}
+
 export function decide(input: DecisionInput): Decision {
   const before = summariseBudget(input.budget, input.policy, input.ledger);
   const assessments = input.utilities
@@ -317,11 +420,18 @@ export function decide(input: DecisionInput): Decision {
   const selected: PlannedPurchase[] = [];
   const deferred: Deferral[] = [];
   const flags: Flag[] = [];
+  const information: InformationDecision[] = [];
+  const diagnosisOf = (kind: UtilityKind) => input.diagnoses?.[kind];
+  /** Usage the agent can't explain yet: unusual, and no diagnosis bought. */
+  const unexplained = (u: UtilitySnapshot) => u.forecast.unusualUsage && !diagnosisOf(u.kind);
+  /** A diagnosis found the extra use avoidable (stuck load, faulty meter). */
+  const avoidable = (u: UtilitySnapshot) => u.forecast.unusualUsage && AVOIDABLE.includes(diagnosisOf(u.kind)?.finding ?? "normal");
+  const blocked = (u: UtilitySnapshot) => unexplained(u) || avoidable(u);
 
   // Needs the agent may actually buy for, in decision order (used for budget sharing).
   const actionable = assessments.filter((a) => {
     const u = input.utilities.find((x) => x.kind === a.kind)!;
-    return a.needsAction && !u.openPurchase && !u.forecast.unusualUsage;
+    return a.needsAction && !u.openPurchase && !blocked(u);
   });
 
   /** Cheapest no-approval option that restores the minimum service for a later need. */
@@ -336,7 +446,28 @@ export function decide(input: DecisionInput): Decision {
   for (const a of assessments) {
     const u = input.utilities.find((x) => x.kind === a.kind)!;
     if (u.forecast.unusualUsage) flags.push({ kind: u.kind, code: "unusual_usage", usageRatio: u.forecast.usageRatio });
-    if (!a.needsAction) continue;
+    const diagnosis = diagnosisOf(u.kind);
+    if (u.forecast.unusualUsage && diagnosis) {
+      const genuine = !AVOIDABLE.includes(diagnosis.finding);
+      information.push({
+        kind: u.kind,
+        action: "diagnosed",
+        code: diagnosis.finding === "insufficient_data" ? "inconclusive" : genuine ? "genuine_use" : "avoidable_use",
+        reason: diagnosis.summary,
+        providerId: diagnosis.providerId,
+      });
+    }
+    if (!a.needsAction) {
+      if (unexplained(u)) {
+        information.push({
+          kind: u.kind,
+          action: "not_worth_it",
+          code: "not_urgent",
+          reason: `${u.kind[0]!.toUpperCase() + u.kind.slice(1)} use is ${u.forecast.usageRatio.toFixed(1)}× usual, but there is enough left that no purchase depends on the cause yet. I'll keep watching and check it if it becomes urgent.`,
+        });
+      }
+      continue;
+    }
 
     const defer = (reason: DeferralReason, extra: Partial<Deferral> = {}) =>
       deferred.push({ kind: u.kind, reason, recommendation: null, violations: [], outrankedBy: null, ...extra });
@@ -352,7 +483,7 @@ export function decide(input: DecisionInput): Decision {
 
     // Budget sharing: if this pick would leave later needs unable to reach their
     // minimum, size this purchase down so every need gets covered where possible.
-    if (pick && !pick.requiresApproval && !u.forecast.unusualUsage) {
+    if (pick && !pick.requiresApproval && !blocked(u)) {
       const later = actionable.slice(actionable.findIndex((x) => x.kind === a.kind) + 1);
       const reservedFor = later
         .map((l) => ({ kind: l.kind, amountNgn: minimumCost(l.kind) }))
@@ -374,9 +505,48 @@ export function decide(input: DecisionInput): Decision {
       }
     }
 
-    // Unusual consumption: do not buy more automatically — ask the owner to review first.
-    if (u.forecast.unusualUsage) {
-      defer("unusual_usage", { recommendation: pick ? { product: pick.product, coverageHours: pick.coverageHours } : null });
+    // Unusual consumption with no explanation: is a diagnostic worth buying first?
+    if (unexplained(u)) {
+      // The stake is the purchase the information could change: what we could actually buy now.
+      const info: InformationDecision = pick
+        ? decideInformation(u, pick.product.amountNgn, input, ledger)
+        : {
+            kind: u.kind,
+            action: "not_worth_it",
+            code: "outside_limits",
+            reason: `No ${u.kind} purchase is possible within your limits right now, so a diagnostic could not change what I buy.`,
+            stakeNgn: 0,
+          };
+      information.push(info);
+      const recommendation = pick ? { product: pick.product, coverageHours: pick.coverageHours } : null;
+      if (info.action === "buy") {
+        ledger.push({ id: `planned:info:${u.kind}`, amountNgn: info.priceNgn!, initiatedBy: "agent", stage: "requested", paymentStatus: "not_started", createdAt: input.now });
+        defer("awaiting_diagnosis", { recommendation });
+      } else {
+        // Not worth checking: don't buy more automatically — ask the owner to review.
+        defer("unusual_usage", { recommendation });
+      }
+      continue;
+    }
+
+    // A diagnosis says the extra use is avoidable: buy only minimal relief if the meter would
+    // otherwise run out soon (sized at the NORMAL rate), and tell the owner what to fix.
+    if (avoidable(u) && diagnosis) {
+      const atNormal: UtilitySnapshot = { ...u, forecast: { ...u.forecast, ratePerHour: diagnosis.expectedNormalPerHour, unusualUsage: false } };
+      // Judge every option on the same basis as the choice: service at the normal rate.
+      const atNormalCandidates = evaluateCandidates(atNormal, input, ledger);
+      for (let i = candidates.length - 1; i >= 0; i -= 1) if (candidates[i]!.kind === u.kind) candidates.splice(i, 1);
+      candidates.push(...atNormalCandidates);
+      const relief = a.urgency === "critical"
+        ? atNormalCandidates.filter((c) => c.authority === "allow" && c.meetsMinimum).sort(byPrice)[0]
+        : undefined;
+      if (relief) {
+        const plan: PlannedPurchase = { kind: u.kind, product: relief.product, coverageHours: relief.coverageHours, requiresApproval: false, partial: false, basis: "diagnosed_minimum", reservedFor: [] };
+        selected.push(plan);
+        ledger.push({ id: `planned:${u.kind}`, amountNgn: plan.product.amountNgn, initiatedBy: "agent", stage: "requested", paymentStatus: "not_started", createdAt: input.now });
+      } else {
+        defer("diagnosed_avoidable", { recommendation: pick ? { product: pick.product, coverageHours: pick.coverageHours } : null });
+      }
       continue;
     }
 
@@ -413,7 +583,9 @@ export function decide(input: DecisionInput): Decision {
   const after = summariseBudget(input.budget, input.policy, ledger);
   const outcome: DecisionOutcome = selected.some((p) => !p.requiresApproval)
     ? "purchase_started"
-    : selected.length > 0
+    : information.some((i) => i.action === "buy")
+      ? "buying_information"
+      : selected.length > 0
       ? "awaiting_approval"
       : flags.length > 0 && deferred.some((d) => d.reason === "unusual_usage")
         ? "flagged"
@@ -432,6 +604,7 @@ export function decide(input: DecisionInput): Decision {
     flags,
     outcome,
     options: buildOptions(input, candidates, selected, deferred),
+    information,
     notNeeded: assessments.filter((a) => !a.needsAction).map((a) => notNeededFor(a)),
     budgetImpact: {
       remainingBeforeNgn: before.remainingNgn,

@@ -236,7 +236,7 @@ export const agentDecisions = sqliteTable(
     reasoning: text("reasoning").notNull(),
     budgetImpact: text("budget_impact", { mode: "json" }).notNull(),
     outcome: text("outcome", {
-      enum: ["no_action", "purchase_started", "awaiting_approval", "blocked", "flagged"],
+      enum: ["no_action", "purchase_started", "buying_information", "awaiting_approval", "blocked", "flagged"],
     }).notNull(),
     createdAt: createdAt(),
   },
@@ -476,6 +476,7 @@ export const RUN_STAGES = [
   "planning",
   "observing",
   "analysing",
+  "identifying_need",
   "discovering",
   "comparing",
   "deciding",
@@ -486,6 +487,7 @@ export const RUN_STAGES = [
   "settling",
   "verifying_fulfilment",
   "updating_household",
+  "using_result",
   "reassessing",
   "finished",
 ] as const;

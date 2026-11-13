@@ -4,21 +4,21 @@
  * The decision record is written BEFORE any purchase is created, so every purchase
  * can be traced back to the exact inputs and reasoning that caused it.
  */
-import { and, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, gt, inArray } from "drizzle-orm";
 import type { Database } from "../db/client";
 import * as s from "../db/schema";
 import type { MobileNetwork, UtilityKind } from "../db/schema";
 import { loadHousehold } from "../household/state";
 import { newId } from "../lib/ids";
 import { executePurchase, type BuyerOptions, type ExecuteResult } from "../payments/x402-buyer";
-import { providersFor } from "../providers/registry";
+import { intelligenceProvidersFor, providersFor } from "../providers/registry";
 import type { Product } from "../providers/types";
 import { recordEvent } from "../transactions/events";
 import { createPurchase, OPEN_STAGES, PolicyDeniedError, PurchaseConflictError } from "../transactions/purchases";
 import { sweepInterruptedPurchases } from "../transactions/sweep";
 import { forecast } from "../usage/forecast";
 import { recentSamples } from "../usage/simulator";
-import { decide, type Decision, type DecisionInput, type UtilitySnapshot } from "./engine";
+import { decide, type Decision, type DecisionInput, type Diagnosis, type InformationOffer, type UtilitySnapshot } from "./engine";
 import { explain, formatDuration, formatQuantity, type Explanation } from "./explain";
 
 export interface AgentRunResult {
@@ -76,7 +76,44 @@ export async function buildDecisionInput(db: Database, householdId: string): Pro
     utilities.map((u) => [u.kind, servesAccount(u.kind, u.network).flatMap((m) => m.listProducts())]),
   ) as Record<UtilityKind, Product[]>;
 
-  return { now, utilities, priorities: state.priorities, policy: state.policy, budget: state.budget, ledger: state.ledger, products };
+  // Paid information services that could explain each utility (e.g. meter diagnostics).
+  const informationOffers = Object.fromEntries(
+    utilities.map((u) => [
+      u.kind,
+      intelligenceProvidersFor(u.kind).map((m) => ({
+        providerId: m.definition.id,
+        name: m.definition.name,
+        priceNgn: m.listProducts()[0]!.amountNgn,
+        available: providerRows.find((r) => r.id === m.definition.id)?.available ?? false,
+        detail: m.definition.offerSummary.toLowerCase().includes("circuit") ? ("detailed" as const) : ("basic" as const),
+      })),
+    ]),
+  ) as Partial<Record<UtilityKind, InformationOffer[]>>;
+
+  // The latest paid diagnosis per utility in the last 24 household hours, from its receipt.
+  const recent = await db
+    .select({ p: s.purchases, rcp: s.receipts })
+    .from(s.purchases)
+    .innerJoin(s.receipts, eq(s.receipts.purchaseId, s.purchases.id))
+    .where(and(eq(s.purchases.householdId, householdId), eq(s.purchases.serviceType, "meter_diagnostic"), eq(s.purchases.fulfilmentStatus, "fulfilled"), gt(s.purchases.simTime, new Date(now.getTime() - 24 * 3_600_000))))
+    .orderBy(desc(s.purchases.createdAt));
+  const diagnoses: Partial<Record<UtilityKind, Diagnosis>> = {};
+  for (const { p, rcp } of recent) {
+    if (diagnoses[p.kind]) continue;
+    const r = (rcp.payload as { fulfilment?: { details?: { result?: Record<string, unknown> } } }).fulfilment?.details?.result;
+    if (!r || r.service !== "meter_diagnostic") continue;
+    diagnoses[p.kind] = {
+      purchaseId: p.id,
+      providerId: p.providerId,
+      finding: r.finding as Diagnosis["finding"],
+      summary: String(r.summary ?? ""),
+      ownerAction: (r.ownerAction as string | null) ?? null,
+      expectedNormalPerHour: Number(r.expectedNormalKwhPerHour ?? 0),
+      observedPerHour: Number(r.observedKwhPerHour ?? 0),
+    };
+  }
+
+  return { now, utilities, priorities: state.priorities, policy: state.policy, budget: state.budget, ledger: state.ledger, products, informationOffers, diagnoses };
 }
 
 /** JSON-safe snapshot for the audit record (Infinity → null). */
@@ -101,6 +138,24 @@ export async function runAgent(
   try {
     // Close out purchases interrupted by a crash/restart before deciding anything new.
     await sweepInterruptedPurchases(db, householdId);
+    return await assessAndAct(db, householdId, opts, 0);
+  } finally {
+    running.delete(householdId);
+  }
+}
+
+/**
+ * One assessment: decide, record, then act. If the decision is to buy information first
+ * (a meter diagnostic), buy it through x402 and assess again with the report in hand —
+ * at most once per run, so the agent never loops buying information.
+ */
+async function assessAndAct(
+  db: Database,
+  householdId: string,
+  opts: { trigger?: "tick" | "manual" | "scenario"; execute?: boolean; buyer?: BuyerOptions },
+  depth: number,
+): Promise<AgentRunResult> {
+  {
     const input = await buildDecisionInput(db, householdId);
     const decision = decide(input);
     const explanation = explain(decision);
@@ -123,7 +178,7 @@ export async function runAgent(
       shortages: serialisable(decision.assessments.filter((a) => a.needsAction).map((a) => ({ kind: a.kind, urgency: a.urgency, hoursRemaining: a.forecast.hoursRemaining }))),
       urgency: serialisable(decision.assessments.map(({ forecast: f, ...a }) => ({ ...a, hoursRemaining: f.hoursRemaining, usageRatio: f.usageRatio }))),
       candidates: serialisable(decision.candidates),
-      selectedAction: serialisable({ selected: decision.selected, deferred: decision.deferred, flags: decision.flags, options: decision.options, notNeeded: decision.notNeeded }),
+      selectedAction: serialisable({ selected: decision.selected, deferred: decision.deferred, flags: decision.flags, options: decision.options, notNeeded: decision.notNeeded, information: decision.information }),
       reasoning: explanation.reasoning,
       budgetImpact: serialisable(decision.budgetImpact),
       outcome: decision.outcome,
@@ -188,8 +243,40 @@ export async function runAgent(
       if (opts.execute !== false) purchases.push(await executePurchase(db, purchaseId, opts.buyer));
     }
 
+    // Buy information the decision needs before it can size a purchase, then reassess.
+    const toBuy = depth === 0 && opts.execute !== false ? decision.information.filter((i) => i.action === "buy" && i.providerId) : [];
+    let learned = false;
+    for (const info of toBuy) {
+      try {
+        const p = await createPurchase(db, {
+          householdId,
+          kind: info.kind,
+          providerId: info.providerId!,
+          productCode: "meter_diagnostic",
+          initiatedBy: "agent",
+          decisionId,
+          idempotencyKey: `${decisionId}:info:${info.kind}`,
+        });
+        if (p.stage === "awaiting_approval") {
+          awaitingApproval.push(p.id);
+          continue;
+        }
+        const r = await executePurchase(db, p.id, opts.buyer);
+        purchases.push(r);
+        if (r.stage === "completed") learned = true;
+      } catch (err) {
+        if (err instanceof PolicyDeniedError || err instanceof PurchaseConflictError) {
+          await recordEvent(db, { householdId, decisionId, category: "decision", type: "purchase.refused", severity: "warning", title: `${info.kind} diagnostic not bought`, detail: err.message, simTime });
+          continue;
+        }
+        throw err;
+      }
+    }
+    if (learned) {
+      const next = await assessAndAct(db, householdId, opts, depth + 1);
+      return { ...next, purchases: [...purchases, ...next.purchases], awaitingApproval: [...awaitingApproval, ...next.awaitingApproval] };
+    }
+
     return { decisionId, decision, explanation, purchases, awaitingApproval };
-  } finally {
-    running.delete(householdId);
   }
 }
