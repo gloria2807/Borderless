@@ -130,7 +130,7 @@ describe("approval flow", () => {
     expect(parked).toMatchObject({ stage: "awaiting_approval", paymentStatus: "not_started" });
     // Purchases under the threshold may proceed, but the parked one never contacted its provider.
     const calledUrls = fetchImpl.mock.calls.map(([url]) => String(url));
-    expect(calledUrls.some((u) => u.includes(`/api/providers/${parked!.kind}/`))).toBe(false);
+    expect(calledUrls.some((u) => u.includes(`/api/providers/${parked!.providerId}/purchase`))).toBe(false);
 
     await approvePurchase(database, id);
     expect((await database.select().from(s.purchases).where(eq(s.purchases.id, id)))[0]!.stage).toBe("requested");

@@ -247,6 +247,11 @@ export const purchases = sqliteTable(
     decisionId: text("decision_id").references(() => agentDecisions.id),
     /** The agent run that made this purchase, if any. */
     runId: text("run_id").references(() => agentRuns.id),
+    /** Provider-issued quote this purchase is bound to (buyer's copy of the commitment). */
+    quoteId: text("quote_id"),
+    quoteAmountAtomic: text("quote_amount_atomic"),
+    quotePayTo: text("quote_pay_to"),
+    quoteExpiresAt: integer("quote_expires_at", { mode: "timestamp_ms" }),
     accountId: text("account_id")
       .notNull()
       .references(() => utilityAccounts.id),
@@ -342,6 +347,35 @@ export const providerSettlements = sqliteTable(
     uniqueIndex("settlements_tx_uq").on(t.txHash),
     uniqueIndex("settlements_provider_purchase_uq").on(t.providerId, t.purchaseId),
   ],
+);
+
+/**
+ * Provider-side quotes. A quote fixes product, recipient, NGN price, testnet USDC price and
+ * payee for a short time; the provider's x402 price for a purchase comes from its quote.
+ * A quote can be redeemed by exactly one purchase.
+ */
+export const providerQuotes = sqliteTable(
+  "provider_quotes",
+  {
+    id: id(),
+    providerId: text("provider_id")
+      .notNull()
+      .references(() => utilityProviders.id),
+    accountIdentifier: text("account_identifier").notNull(),
+    network: text("network", { enum: MOBILE_NETWORKS }),
+    productCode: text("product_code").notNull(),
+    amountNgn: integer("amount_ngn").notNull(),
+    quantity: real("quantity").notNull(),
+    unit: text("unit", { enum: ["kWh", "NGN", "MB"] }).notNull(),
+    amountAtomic: text("amount_atomic").notNull(),
+    asset: text("asset").notNull(),
+    payTo: text("pay_to").notNull(),
+    issuedAt: integer("issued_at", { mode: "timestamp_ms" }).notNull(),
+    expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
+    /** Set when a settled purchase redeems the quote. */
+    redeemedByPurchaseId: text("redeemed_by_purchase_id"),
+  },
+  (t) => [uniqueIndex("quotes_redeemed_uq").on(t.redeemedByPurchaseId)],
 );
 
 export const fulfilments = sqliteTable(

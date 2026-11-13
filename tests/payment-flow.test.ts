@@ -1,13 +1,15 @@
 import { eq } from "drizzle-orm";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import type { Database } from "@/server/db/client";
 import * as s from "@/server/db/schema";
 import { DEMO_ACCOUNTS, DEMO_HOUSEHOLD_ID } from "@/server/household/seed";
 import { executePurchase } from "@/server/payments/x402-buyer";
 import { handleProviderPurchase } from "@/server/providers/purchase-handler";
+import { handleQuoteRequest, type ProviderQuote } from "@/server/providers/quote-handler";
 import { createPurchase, PolicyDeniedError, PurchaseConflictError } from "@/server/transactions/purchases";
 import { TESTNET_USDC } from "@/server/payments/pricing";
 import { configureTestEnv, freshDatabase, TEST_KEYS } from "./helpers";
+import { paymentRequiredHeader, providerFetch } from "./provider-fetch";
 
 let database: Database;
 beforeEach(async () => {
@@ -15,46 +17,76 @@ beforeEach(async () => {
   database = await freshDatabase();
 });
 
-const providerRequest = (kind: string, body: unknown, headers: Record<string, string> = {}) =>
-  new Request(`http://provider.test/api/providers/${kind}/purchase`, {
-    method: "POST",
-    headers: { "content-type": "application/json", ...headers },
-    body: JSON.stringify(body),
-  });
+const req = (path: string, body: unknown, headers: Record<string, string> = {}) =>
+  new Request(`http://provider.test/api/providers/${path}`, { method: "POST", headers: { "content-type": "application/json", ...headers }, body: JSON.stringify(body) });
 
-describe("provider endpoint validates before asking for payment", () => {
-  it("rejects malformed orders with 400", async () => {
-    const res = await handleProviderPurchase("electricity", providerRequest("electricity", { purchaseId: "nope" }));
-    expect(res.status).toBe(400);
+const METER = { accountIdentifier: "45012345678" };
+const LINE = { accountIdentifier: "+2348030000417", network: "mtn" as const };
+
+async function quote(kind: "electricity" | "airtime" | "data", body: Record<string, unknown>): Promise<ProviderQuote> {
+  const res = await handleQuoteRequest(kind, req(`prv_demo_${kind}/quote`, body));
+  expect(res.status).toBe(200);
+  return (await res.json()) as ProviderQuote;
+}
+
+describe("provider quote endpoint (free) validates before any payment", () => {
+  it("issues a binding quote: price, payee, recipient, expiry", async () => {
+    const q = await quote("electricity", { ...METER, amountNgn: 3000 });
+    expect(q).toMatchObject({
+      providerId: "prv_demo_electricity",
+      amountNgn: 3000,
+      recipient: { identifier: "45012345678" },
+      product: { code: "elec_3000", quantity: 13.3, unit: "kWh" },
+      payment: { scheme: "exact", network: "stellar:testnet", asset: TESTNET_USDC.contract, amountAtomic: "300000", amountUsdc: "0.03", payTo: TEST_KEYS.electricity },
+      simulated: true,
+    });
+    expect(Date.parse(q.expiresAt) - Date.parse(q.issuedAt)).toBe(300_000);
   });
-  it("rejects unknown meters with 404", async () => {
-    const res = await handleProviderPurchase(
-      "electricity",
-      providerRequest("electricity", { purchaseId: "pur_0000000000aaaa", accountIdentifier: "99999999999", amountNgn: 3000 }),
-    );
-    expect(res.status).toBe(404);
+  it.each([
+    ["malformed request", "electricity", { foo: 1 }, 400],
+    ["unknown meter", "electricity", { accountIdentifier: "99999999999", amountNgn: 3000 }, 404],
+    ["invalid amount", "electricity", { ...METER, amountNgn: 1234 }, 422],
+    ["wrong network for the line", "airtime", { ...LINE, network: "glo", amountNgn: 500 }, 422],
+  ] as const)("rejects a %s", async (_l, kind, body, status) => {
+    const res = await handleQuoteRequest(kind, req(`prv_demo_${kind}/quote`, body));
+    expect(res.status).toBe(status);
   });
-  it("rejects invalid amounts with 422", async () => {
-    const res = await handleProviderPurchase(
-      "electricity",
-      providerRequest("electricity", { purchaseId: "pur_0000000000aaaa", accountIdentifier: "45012345678", amountNgn: 1234 }),
-    );
-    expect(res.status).toBe(422);
-  });
-  it("rejects a network that does not match the recipient line", async () => {
-    const res = await handleProviderPurchase(
-      "airtime",
-      providerRequest("airtime", { purchaseId: "pur_0000000000aaaa", accountIdentifier: "+2348030000417", network: "glo", amountNgn: 500 }),
-    );
-    expect(res.status).toBe(422);
-  });
-  it("returns 503 when the provider is marked unavailable", async () => {
+  it("returns 503 when the provider is unavailable", async () => {
     await database.update(s.utilityProviders).set({ available: false }).where(eq(s.utilityProviders.kind, "electricity"));
-    const res = await handleProviderPurchase(
-      "electricity",
-      providerRequest("electricity", { purchaseId: "pur_0000000000aaaa", accountIdentifier: "45012345678", amountNgn: 3000 }),
-    );
+    const res = await handleQuoteRequest("electricity", req("prv_demo_electricity/quote", { ...METER, amountNgn: 3000 }));
     expect(res.status).toBe(503);
+  });
+});
+
+describe("purchase endpoint redeems exactly one valid quote", () => {
+  const order = (q: ProviderQuote, extra: Record<string, unknown> = {}) => ({ ...METER, amountNgn: 3000, purchaseId: "pur_0000000000aaaa", quoteId: q.quoteId, ...extra });
+  const purchase = (body: unknown, headers: Record<string, string> = {}) => handleProviderPurchase("electricity", req("prv_demo_electricity/purchase", body, headers));
+
+  it("rejects an order without a quote", async () => {
+    expect((await purchase({ ...METER, amountNgn: 3000, purchaseId: "pur_0000000000aaaa" })).status).toBe(400);
+  });
+  it("rejects an unknown quote", async () => {
+    expect((await purchase({ ...METER, amountNgn: 3000, purchaseId: "pur_0000000000aaaa", quoteId: "qt_00000000000000zzzz" })).status).toBe(404);
+  });
+  it("refuses an expired quote with 410 (nothing verified, nothing charged)", async () => {
+    const q = await quote("electricity", { ...METER, amountNgn: 3000 });
+    await database.update(s.providerQuotes).set({ expiresAt: new Date(Date.now() - 1000) }).where(eq(s.providerQuotes.id, q.quoteId));
+    const res = await purchase(order(q));
+    expect(res.status).toBe(410);
+    expect((await res.json()).code).toBe("quote_expired");
+  });
+  it("refuses a quote already redeemed by another purchase with 410", async () => {
+    const q = await quote("electricity", { ...METER, amountNgn: 3000 });
+    await database.update(s.providerQuotes).set({ redeemedByPurchaseId: "pur_0000000000other" }).where(eq(s.providerQuotes.id, q.quoteId));
+    const res = await purchase(order(q));
+    expect(res.status).toBe(410);
+    expect((await res.json()).code).toBe("quote_used");
+  });
+  it("refuses an order that doesn't match its quote", async () => {
+    const q = await quote("electricity", { ...METER, amountNgn: 3000 });
+    const res = await purchase(order(q, { amountNgn: 1000 }));
+    expect(res.status).toBe(422);
+    expect((await res.json()).code).toBe("quote_mismatch");
   });
 });
 
@@ -77,11 +109,7 @@ describe("provider idempotency", () => {
     await seedSettlement("failed");
     const res = await handleProviderPurchase(
       "electricity",
-      providerRequest(
-        "electricity",
-        { purchaseId: "pur_0000000000bbbb", accountIdentifier: "45012345678", amountNgn: 3000 },
-        { "payment-signature": "anything" },
-      ),
+      req("prv_demo_electricity/purchase", { ...METER, amountNgn: 3000, purchaseId: "pur_0000000000bbbb", quoteId: "qt_0000000000whatever" }, { "payment-signature": "anything" }),
     );
     expect(res.status).toBe(409);
     expect((await res.json()).code).toBe("settled_fulfilment_pending");
@@ -133,78 +161,91 @@ describe("purchase creation enforces authority", () => {
 });
 
 describe("buyer fails closed before signing", () => {
-  const paymentRequiredHeader = (overrides: Record<string, unknown>) =>
-    Buffer.from(
-      JSON.stringify({
-        x402Version: 2,
-        resource: { url: "http://provider.test/api/providers/electricity/purchase" },
-        accepts: [
-          {
-            scheme: "exact",
-            network: "stellar:testnet",
-            amount: "300000",
-            asset: TESTNET_USDC.contract,
-            payTo: TEST_KEYS.electricity,
-            maxTimeoutSeconds: 300,
-            extra: { areFeesSponsored: true },
-            ...overrides,
-          },
-        ],
-      }),
-    ).toString("base64");
-
-  const run = async (respond: () => Response | Promise<Response>) => {
+  const run = async (fetchOpts: Parameters<typeof providerFetch>[0]) => {
     const p = await createPurchase(database, { householdId: DEMO_HOUSEHOLD_ID, kind: "electricity", amountNgn: 3000, initiatedBy: "agent" });
-    const fetchMock = vi.fn(async () => respond());
-    const result = await executePurchase(database, p.id, { fetchImpl: fetchMock as unknown as typeof fetch, horizon: vi.fn() });
-    return { result, fetchMock };
+    const pf = providerFetch(fetchOpts);
+    const result = await executePurchase(database, p.id, { fetchImpl: pf.fetchImpl, horizon: async () => ({ status: "not_found" }), walletBalance: async () => 100_000_000n });
+    return { result, pf, purchaseId: p.id };
   };
+  const base = { scheme: "exact", network: "stellar:testnet", amount: "300000", asset: TESTNET_USDC.contract, payTo: TEST_KEYS.electricity, maxTimeoutSeconds: 300, extra: { areFeesSponsored: true } };
+
+  it("obtains a provider quote and binds the purchase to it", async () => {
+    const { pf, purchaseId } = await run({ purchase: () => new Response("{}", { status: 402, headers: { "PAYMENT-REQUIRED": paymentRequiredHeader({ ...base, payTo: TEST_KEYS.airtime }) } }) });
+    expect(pf.quotes()).toHaveLength(1);
+    const [p] = await database.select().from(s.purchases).where(eq(s.purchases.id, purchaseId));
+    expect(p!.quoteId).toMatch(/^qt_/);
+    expect(p!.quoteAmountAtomic).toBe("300000");
+    expect(pf.purchases()[0]!.body).toMatchObject({ quoteId: p!.quoteId });
+  });
 
   it.each([
     ["a different recipient", { payTo: TEST_KEYS.airtime }],
-    ["a higher amount", { amount: "3000000" }],
+    ["more than the quote (provider price changed)", { amount: "330000" }],
     ["a different asset", { asset: "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC" }],
     ["a different network", { network: "stellar:pubnet" }],
-  ])("refuses requirements with %s and records an honest failure", async (_label, overrides) => {
-    const { result, fetchMock } = await run(
-      () => new Response("{}", { status: 402, headers: { "PAYMENT-REQUIRED": paymentRequiredHeader(overrides) } }),
-    );
-    expect(result).toMatchObject({
-      stage: "failed",
-      paymentStatus: "failed",
-      fulfilmentStatus: "not_started",
-      failureCode: "requirements_mismatch",
-      txHash: null,
+  ])("refuses a 402 asking for %s and records an honest failure", async (_label, overrides) => {
+    const { result, pf } = await run({ purchase: () => new Response("{}", { status: 402, headers: { "PAYMENT-REQUIRED": paymentRequiredHeader({ ...base, ...overrides }) } }) });
+    expect(result).toMatchObject({ stage: "failed", paymentStatus: "failed", fulfilmentStatus: "not_started", failureCode: "requirements_mismatch", txHash: null });
+    expect(pf.purchases()).toHaveLength(1); // never retried with a signature
+  });
+
+  it("refuses a quote whose price changed since the decision (re-decision / re-approval needed)", async () => {
+    const { result, pf } = await run({
+      quote: async (request, body) => {
+        const { handleQuoteRequest: h } = await import("@/server/providers/quote-handler");
+        const res = await h("electricity", new Request(request.url, { method: "POST", body: JSON.stringify(body) }));
+        const q = (await res.json()) as ProviderQuote;
+        return new Response(JSON.stringify({ ...q, amountNgn: 3500, payment: { ...q.payment, amountAtomic: "350000" } }), { status: 200 });
+      },
     });
-    expect(fetchMock).toHaveBeenCalledTimes(1); // never retried with a signature
+    expect(result).toMatchObject({ stage: "failed", failureCode: "quote_changed" });
+    expect(pf.purchases()).toHaveLength(0);
+  });
+
+  it("refuses a quote that names a payee other than the provider's registered wallet", async () => {
+    const { result, pf } = await run({
+      quote: async () => new Response(JSON.stringify({ quoteId: "qt_0000000000badpayee", amountNgn: 3000, expiresAt: new Date(Date.now() + 300_000).toISOString(), payment: { amountAtomic: "300000", payTo: TEST_KEYS.data } }), { status: 200 }),
+    });
+    expect(result).toMatchObject({ stage: "failed", failureCode: "quote_payee_mismatch" });
+    expect(pf.purchases()).toHaveLength(0);
+  });
+
+  it("refuses a quote whose USDC amount doesn't match its NGN price at the demo rate", async () => {
+    const { result } = await run({
+      quote: async () => new Response(JSON.stringify({ quoteId: "qt_0000000000badprice", amountNgn: 3000, expiresAt: new Date(Date.now() + 300_000).toISOString(), payment: { amountAtomic: "3000000", payTo: TEST_KEYS.electricity } }), { status: 200 }),
+    });
+    expect(result).toMatchObject({ stage: "failed", failureCode: "quote_price_mismatch" });
+  });
+
+  it("treats a provider refusing the quote (410) as not charged", async () => {
+    const { result } = await run({ purchase: () => new Response(JSON.stringify({ code: "quote_expired", message: "This quote has expired." }), { status: 410 }) });
+    expect(result).toMatchObject({ stage: "failed", paymentStatus: "failed", failureCode: "quote_expired" });
   });
 
   it("treats an unreadable 402 as a failure, not a payment", async () => {
-    const { result } = await run(() => new Response("{}", { status: 402 }));
+    const { result } = await run({ purchase: () => new Response("{}", { status: 402 }) });
     expect(result).toMatchObject({ stage: "failed", paymentStatus: "failed", failureCode: "invalid_payment_required" });
   });
 
   it("does not pay when the provider is unreachable", async () => {
-    const { result } = await run(() => {
-      throw new TypeError("fetch failed");
-    });
-    expect(result).toMatchObject({ stage: "failed", paymentStatus: "failed", failureCode: "provider_unreachable" });
+    const { result } = await run({ quote: () => { throw new TypeError("fetch failed"); } });
+    expect(result).toMatchObject({ stage: "failed", paymentStatus: "failed" });
   });
 
   it("re-checks authority at execution time (owner revoked auto-purchasing)", async () => {
     const p = await createPurchase(database, { householdId: DEMO_HOUSEHOLD_ID, kind: "electricity", amountNgn: 3000, initiatedBy: "agent" });
     await database.update(s.agentPolicies).set({ autoPurchaseEnabled: false });
-    const fetchMock = vi.fn();
-    const result = await executePurchase(database, p.id, { fetchImpl: fetchMock as unknown as typeof fetch });
+    const pf = providerFetch();
+    const result = await executePurchase(database, p.id, { fetchImpl: pf.fetchImpl });
     expect(result).toMatchObject({ stage: "failed", failureCode: "policy_denied" });
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(pf.calls).toHaveLength(0);
   });
 
   it("never re-executes a purchase that has moved past requested", async () => {
     const p = await createPurchase(database, { householdId: DEMO_HOUSEHOLD_ID, kind: "electricity", amountNgn: 3000, initiatedBy: "agent" });
     await database.update(s.purchases).set({ stage: "submitted", paymentStatus: "submitted" }).where(eq(s.purchases.id, p.id));
-    const fetchMock = vi.fn();
-    expect((await executePurchase(database, p.id, { fetchImpl: fetchMock as unknown as typeof fetch })).stage).toBe("submitted");
-    expect(fetchMock).not.toHaveBeenCalled();
+    const pf = providerFetch();
+    expect((await executePurchase(database, p.id, { fetchImpl: pf.fetchImpl })).stage).toBe("submitted");
+    expect(pf.calls).toHaveLength(0);
   });
 });

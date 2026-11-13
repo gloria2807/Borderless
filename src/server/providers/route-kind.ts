@@ -1,7 +1,9 @@
-import { UTILITY_KINDS, type UtilityKind } from "../db/schema";
+import type { UtilityKind } from "../db/schema";
+import { providerById } from "./registry";
 
-export function parseKind(value: string): UtilityKind | null {
-  return (UTILITY_KINDS as readonly string[]).includes(value) ? (value as UtilityKind) : null;
+/** Resolve a provider id from the URL to the utility it serves (null = no such provider). */
+export function parseProviderId(value: string): UtilityKind | null {
+  return providerById(value)?.definition.kind ?? null;
 }
 
 export const notFound = () =>

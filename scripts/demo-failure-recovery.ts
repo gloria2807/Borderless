@@ -33,10 +33,10 @@ const [done] = await database.select().from(s.purchases).where(eq(s.purchases.st
 if (!done) throw new Error("Run `pnpm demo:purchase` first");
 const [acct] = await database.select().from(s.utilityAccounts).where(eq(s.utilityAccounts.id, done.accountId));
 const before1 = await usdc();
-const replay = await fetch(`${base}/api/providers/${done.kind}/purchase`, {
+const replay = await fetch(`${base}/api/providers/${done.providerId}/purchase`, {
   method: "POST",
   headers: { "content-type": "application/json" },
-  body: JSON.stringify({ purchaseId: done.id, accountIdentifier: acct!.identifier, ...(acct!.network ? { network: acct!.network } : {}), ...(done.kind === "data" ? { productCode: done.productCode } : { amountNgn: done.amountNgn }) }),
+  body: JSON.stringify({ purchaseId: done.id, quoteId: done.quoteId, accountIdentifier: acct!.identifier, ...(acct!.network ? { network: acct!.network } : {}), ...(done.kind === "data" ? { productCode: done.productCode } : { amountNgn: done.amountNgn }) }),
 });
 check("unpaid replay returns 200 with stored receipt (no 402)", replay.status === 200 && replay.headers.get("x-borderless-replay") === "true", `HTTP ${replay.status}`);
 const again = await executePurchase(database, done.id);

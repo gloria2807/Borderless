@@ -10,7 +10,7 @@
  * No code path credits a virtual device unless `processSettlement` returned success
  * with a transaction hash.
  */
-import { and, eq, ne, sql } from "drizzle-orm";
+import { and, eq, isNull, ne, sql } from "drizzle-orm";
 import type { HTTPResponseInstructions } from "@x402/core/server";
 import { db } from "../db/client";
 import * as s from "../db/schema";
@@ -21,7 +21,7 @@ import { PROVIDER_MODULES, PROVIDERS, resolveProduct } from "./registry";
 import { ProductError, type Product, type Tx } from "./types";
 import { fulfilmentRetrySchema, providerOrderSchema, type ProviderOrder } from "./order";
 import { createRequestContext } from "./http-adapter";
-import { getSeller } from "./x402-seller";
+import { getSeller, type PricedOrder } from "./x402-seller";
 import type { ProviderReceipt } from "./receipt";
 
 const json = (status: number, body: unknown, headers: Record<string, string> = {}) =>
@@ -95,17 +95,32 @@ export async function handleProviderPurchase(kind: UtilityKind, request: Request
     });
   }
 
+  // 3. The quote this purchase redeems. It fixes the price, recipient, product and payee.
+  //    410 = gone: the provider refuses before any payment is verified, so nothing is charged.
+  const [quote] = await database.select().from(s.providerQuotes).where(and(eq(s.providerQuotes.id, order.quoteId), eq(s.providerQuotes.providerId, provider.id)));
+  if (!quote) return json(404, { code: "unknown_quote", message: "This provider issued no such quote. Request a new quote." });
+  if (quote.redeemedByPurchaseId && quote.redeemedByPurchaseId !== order.purchaseId) {
+    return json(410, { code: "quote_used", message: "This quote has already been redeemed by another purchase. Nothing was charged." });
+  }
+  if (quote.expiresAt.getTime() < Date.now()) {
+    return json(410, { code: "quote_expired", message: "This quote has expired. Request a new quote. Nothing was charged." });
+  }
+  if (quote.accountIdentifier !== order.accountIdentifier || (quote.network ?? undefined) !== order.network || quote.productCode !== product.code) {
+    return json(422, { code: "quote_mismatch", message: "The order does not match its quote (recipient, network or product)." });
+  }
+  const priced: PricedOrder = { ...order, quoteAmountAtomic: quote.amountAtomic };
+
   const lockKey = `${provider.id}:${order.purchaseId}`;
   if (context402Only(request)) {
     // Unpaid request: just return the 402 challenge (no lock needed).
-    return challengeOrError(kind, request, order);
+    return challengeOrError(kind, request, priced);
   }
   if (inFlight.has(lockKey)) {
     return json(409, { code: "purchase_in_progress", message: "A payment for this purchase is already being processed." });
   }
   inFlight.add(lockKey);
   try {
-    return await settleAndFulfil(kind, request, order, product, account.id);
+    return await settleAndFulfil(kind, request, priced, product, account.id);
   } finally {
     inFlight.delete(lockKey);
   }
@@ -115,7 +130,7 @@ function context402Only(request: Request): boolean {
   return !request.headers.get("payment-signature") && !request.headers.get("x-payment");
 }
 
-async function challengeOrError(kind: UtilityKind, request: Request, order: ProviderOrder): Promise<Response> {
+async function challengeOrError(kind: UtilityKind, request: Request, order: PricedOrder): Promise<Response> {
   const seller = await getSeller(kind);
   const result = await seller.processHTTPRequest(createRequestContext(request, order));
   if (result.type === "payment-error") return fromInstructions(result.response);
@@ -126,7 +141,7 @@ async function challengeOrError(kind: UtilityKind, request: Request, order: Prov
 async function settleAndFulfil(
   kind: UtilityKind,
   request: Request,
-  order: ProviderOrder,
+  order: PricedOrder,
   product: ReturnType<typeof resolveProduct>,
   accountId: string,
 ): Promise<Response> {
@@ -197,6 +212,10 @@ async function settleAndFulfil(
     fulfilmentStatus: "pending",
     settledAt: new Date(),
   });
+  await database
+    .update(s.providerQuotes)
+    .set({ redeemedByPurchaseId: order.purchaseId })
+    .where(and(eq(s.providerQuotes.id, order.quoteId), isNull(s.providerQuotes.redeemedByPurchaseId)));
 
   // 6. Release the simulated utility.
   const fulfilled = await fulfilSettlement(settlementId, simNow);
@@ -299,7 +318,7 @@ export async function fulfilSettlement(settlementId: string, simNow: Date): Prom
   }
 }
 
-/** POST /api/providers/:kind/fulfilment/retry — recovery without a second payment. */
+/** POST /api/providers/:providerId/fulfilment/retry — recovery without a second payment. */
 export async function handleFulfilmentRetry(kind: UtilityKind, request: Request): Promise<Response> {
   const parsed = fulfilmentRetrySchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return json(400, { code: "invalid_request", message: "purchaseId is required." });

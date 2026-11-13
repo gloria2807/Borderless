@@ -14,10 +14,10 @@ import { DEMO_ACCOUNTS, DEMO_HOUSEHOLD_ID } from "@/server/household/seed";
 import { TESTNET_USDC } from "@/server/payments/pricing";
 import { executePurchase } from "@/server/payments/x402-buyer";
 import { fulfilSettlement, handleFulfilmentRetry, handleProviderPurchase } from "@/server/providers/purchase-handler";
-import { errorResponse, parseKind } from "@/server/providers/route-kind";
 import { PROVIDERS } from "@/server/providers/registry";
 import { createPurchase } from "@/server/transactions/purchases";
 import { configureTestEnv, freshDatabase } from "./helpers";
+import { providerFetch } from "./provider-fetch";
 
 let database: Database;
 let seq = 0;
@@ -120,19 +120,13 @@ describe("facilitator outage", () => {
   });
 
   it("never pays and records an honest failure when the provider cannot reach its facilitator", async () => {
-    // Route the buyer's HTTP calls straight into the provider route handler, in-process.
-    const inProcessFetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-      const url = new URL(String(input));
-      const kind = parseKind(url.pathname.split("/")[3] ?? "")!;
-      try {
-        return await handleProviderPurchase(kind, new Request(url, init));
-      } catch (err) {
-        return errorResponse(err);
-      }
-    }) as typeof fetch;
+    // Route the buyer's HTTP calls straight into the real provider handlers, in-process.
+    const pf = providerFetch();
+    const inProcessFetch = pf.fetchImpl;
 
     const p = await createPurchase(database, { householdId: DEMO_HOUSEHOLD_ID, kind: "airtime", amountNgn: 500, initiatedBy: "agent" });
-    const result = await executePurchase(database, p.id, { fetchImpl: inProcessFetch });
+    const result = await executePurchase(database, p.id, { fetchImpl: inProcessFetch, walletBalance: async () => 100_000_000n });
+    expect(pf.quotes()).toHaveLength(1); // a real quote was issued before the facilitator was needed
     expect(result).toMatchObject({ stage: "failed", paymentStatus: "failed", fulfilmentStatus: "not_started", txHash: null });
     expect((await device("airtime")).balance).toBe(200);
     const [payment] = await database.select().from(s.payments).where(eq(s.payments.purchaseId, p.id));

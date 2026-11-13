@@ -38,6 +38,8 @@ export interface CreatePurchaseInput {
   idempotencyKey?: string;
   /** Agent run making this purchase (task budget applies). */
   runId?: string;
+  /** Provider quote this purchase redeems (the buyer re-validates it before signing). */
+  quote?: { quoteId: string; amountAtomic: string; payTo: string; expiresAt: Date };
 }
 
 export type PurchaseRow = typeof s.purchases.$inferSelect;
@@ -98,6 +100,10 @@ export async function createPurchase(db: Database, input: CreatePurchaseInput): 
           householdId: input.householdId,
           decisionId: input.decisionId ?? null,
           runId: input.runId ?? null,
+          quoteId: input.quote?.quoteId ?? null,
+          quoteAmountAtomic: input.quote?.amountAtomic ?? null,
+          quotePayTo: input.quote?.payTo ?? null,
+          quoteExpiresAt: input.quote?.expiresAt ?? null,
           accountId: account.id,
           providerId: provider.id,
           kind: input.kind,

@@ -23,7 +23,7 @@ import { evaluateSpendingAuthority, type PolicyCheck } from "../household/policy
 import { loadHousehold } from "../household/state";
 import { newId } from "../lib/ids";
 import type { ProviderReceipt } from "../providers/receipt";
-import { providerRoutePath, quoteOrderAtomic } from "../providers/x402-seller";
+import { providerQuotePath, providerRetryPath, providerRoutePath } from "../providers/x402-seller";
 import { recordEvent } from "../transactions/events";
 import { confirmOnHorizon, explorerTxUrl } from "./horizon";
 import { readUsdcBalanceAtomic, type WalletBalanceReader } from "./wallet";
@@ -64,6 +64,16 @@ export interface BuyerOptions {
   /** Receives payment-lifecycle checkpoints (agent run event log). */
   onStage?: (s: BuyerStage) => void | Promise<void>;
 }
+
+/** Minimal shape of a provider quote; anything else is rejected. */
+const quoteResponseSchema = z
+  .object({
+    quoteId: z.string().regex(/^qt_[0-9a-z]{10,40}$/),
+    amountNgn: z.number().int().positive(),
+    expiresAt: z.string(),
+    payment: z.object({ amountAtomic: z.string().regex(/^\d+$/), payTo: z.string().regex(/^G[A-Z2-7]{55}$/) }).loose(),
+  })
+  .loose();
 
 const receiptSchema = z
   .object({
@@ -170,15 +180,53 @@ export async function executePurchase(db: Database, purchaseId: string, options:
       throw new StepError("policy_denied", authority.violations.map((v) => v.message).join(" "), "no");
     }
 
-    // 2. Our own quote — the only amount we will ever sign for.
-    const order = {
-      purchaseId,
+    // 2. The provider's quote — the only amount and payee we will ever sign for. Checked
+    //    against things the provider cannot influence: our provider registry's payee, our own
+    //    NGN→testnet-USDC demo conversion, and the amount this purchase was decided/approved at.
+    const request = {
       accountIdentifier: account.identifier,
       ...(account.network ? { network: account.network } : {}),
       ...(purchase.kind === "data" ? { productCode: purchase.productCode } : { amountNgn: purchase.amountNgn }),
     };
-    const expectedAtomic = quoteOrderAtomic(purchase.kind, order);
-    const expectedPayTo = providerPayTo(purchase.kind);
+    const registryPayTo = providerPayTo(purchase.kind);
+    const fairAtomic = ngnToTestnetUsdcAtomic(purchase.amountNgn, env().DEMO_NGN_PER_TESTNET_USDC).toString();
+    let quote: { quoteId: string; amountAtomic: string; payTo: string; expiresAt: Date } | null =
+      purchase.quoteId && purchase.quoteAmountAtomic && purchase.quotePayTo && purchase.quoteExpiresAt && purchase.quoteExpiresAt.getTime() > Date.now() + 15_000
+        ? { quoteId: purchase.quoteId, amountAtomic: purchase.quoteAmountAtomic, payTo: purchase.quotePayTo, expiresAt: purchase.quoteExpiresAt }
+        : null;
+    if (!quote) {
+      let res: Response;
+      try {
+        res = await doFetch(new URL(providerQuotePath(purchase.kind), env().APP_BASE_URL).toString(), {
+          method: "POST",
+          headers: { "content-type": "application/json", accept: "application/json" },
+          body: JSON.stringify(request),
+          signal: AbortSignal.timeout(20_000),
+        });
+      } catch (err) {
+        throw new StepError("provider_unreachable", `Could not reach ${provider.name} for a quote: ${(err as Error).message}`, "no");
+      }
+      const body = (await readBody(res)) as Record<string, unknown> | null;
+      const parsedQuote = quoteResponseSchema.safeParse(body);
+      if (!res.ok || !parsedQuote.success) {
+        throw new StepError((body as { code?: string } | null)?.code ?? "quote_unavailable", (body as { message?: string } | null)?.message ?? `The provider did not issue a valid quote (HTTP ${res.status}).`, "no");
+      }
+      const q = parsedQuote.data;
+      if (q.amountNgn !== purchase.amountNgn) {
+        throw new StepError("quote_changed", `${provider.name} now quotes ₦${q.amountNgn.toLocaleString("en-NG")}, not the ₦${purchase.amountNgn.toLocaleString("en-NG")} this purchase was decided at. Nothing was signed; a new decision is needed.`, "no");
+      }
+      quote = { quoteId: q.quoteId, amountAtomic: q.payment.amountAtomic, payTo: q.payment.payTo, expiresAt: new Date(q.expiresAt) };
+      await update(db, purchaseId, { quoteId: quote.quoteId, quoteAmountAtomic: quote.amountAtomic, quotePayTo: quote.payTo, quoteExpiresAt: quote.expiresAt });
+    }
+    if (quote.payTo !== registryPayTo) {
+      throw new StepError("quote_payee_mismatch", "The quote names a payee that is not this provider's registered wallet. Nothing was signed.", "no");
+    }
+    if (quote.amountAtomic !== fairAtomic) {
+      throw new StepError("quote_price_mismatch", "The quote's testnet USDC amount does not match the NGN price at the demo rate. Nothing was signed.", "no");
+    }
+    const order = { ...request, purchaseId, quoteId: quote.quoteId };
+    const expectedAtomic = BigInt(quote.amountAtomic);
+    const expectedPayTo = quote.payTo;
     const isExpected = (r: PaymentRequirements) =>
       r.scheme === "exact" &&
       r.network === env().STELLAR_NETWORK &&
@@ -266,7 +314,7 @@ export async function executePurchase(db: Database, purchaseId: string, options:
       purchaseId,
       {
         runId: options.runId ?? purchase.runId ?? undefined,
-        quote: { valid: true, detail: `Provider asked for ${formatAtomic(offered.amount)} USDC to ${offered.payTo.slice(0, 6)}…, exactly our quote.` },
+        quote: { valid: true, detail: `Quote ${quote.quoteId}: the provider asked for ${formatAtomic(offered.amount)} USDC to ${offered.payTo.slice(0, 6)}…, exactly as quoted.` },
         wallet: { availableAtomic: balance, requiredAtomic: BigInt(offered.amount) },
       },
     );
@@ -355,6 +403,10 @@ export async function executePurchase(db: Database, purchaseId: string, options:
     if (paid.status === 503 && (body as { code?: string; charged?: boolean } | null)?.code === "facilitator_unavailable") {
       // Provider states the facilitator failed at verification — nothing was submitted on-chain.
       throw new StepError("facilitator_unavailable", (body as { message?: string }).message ?? "The payment facilitator is unavailable. Nothing was charged.", "no");
+    }
+    if (paid.status === 410) {
+      // Quote expired or already used: the provider refused before verifying any payment.
+      throw new StepError((body as { code?: string } | null)?.code ?? "quote_gone", (body as { message?: string } | null)?.message ?? "The quote is no longer valid. Nothing was charged.", "no");
     }
     if (paid.status === 409) {
       throw new StepError((body as { code?: string } | null)?.code ?? "conflict", (body as { message?: string } | null)?.message ?? "Provider reported a conflict.", "unknown");
@@ -495,7 +547,7 @@ export async function recoverPurchase(db: Database, purchaseId: string, options:
   const event = (e: Omit<Parameters<typeof recordEvent>[1], "householdId" | "purchaseId" | "simTime">) =>
     recordEvent(db, { ...e, householdId: purchase.householdId, purchaseId, simTime: hh?.simulatedNow ?? new Date() });
 
-  const url = new URL(`/api/providers/${purchase.kind}/fulfilment/retry`, env().APP_BASE_URL).toString();
+  const url = new URL(providerRetryPath(purchase.kind), env().APP_BASE_URL).toString();
   await event({ category: "fulfilment", type: "fulfilment.retry", severity: "info", title: "Retrying fulfilment — no new payment", detail: "Asking the provider to release the utility for the payment it already received." });
   let res: Response;
   try {

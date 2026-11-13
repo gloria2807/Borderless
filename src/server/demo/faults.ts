@@ -8,6 +8,7 @@ import { demoFaults } from "../db/schema";
 
 export const DEMO_FAULTS = {
   provider_fulfilment_failure: "Provider fails to release the utility after a successful payment",
+  provider_quote_mismatch: "Provider asks for more than it quoted (the agent must refuse to sign)",
 } as const;
 export type DemoFaultKey = keyof typeof DEMO_FAULTS;
 

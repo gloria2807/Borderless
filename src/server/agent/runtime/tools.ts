@@ -9,7 +9,6 @@
  * Tool results are returned to the model as DATA. Provider-supplied text is labelled
  * untrusted and is never executed as an instruction.
  */
-import { createHash } from "node:crypto";
 import { and, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { env, providerPayTo } from "../../config/env";
@@ -21,6 +20,8 @@ import { loadHousehold } from "../../household/state";
 import { formatAtomic, ngnToTestnetUsdcAtomic } from "../../payments/pricing";
 import { readUsdcBalanceAtomic, type WalletBalanceReader } from "../../payments/wallet";
 import { executePurchase, type BuyerOptions, type BuyerStage } from "../../payments/x402-buyer";
+import type { ProviderQuote } from "../../providers/quote-handler";
+import { providerQuotePath } from "../../providers/x402-seller";
 import { PROVIDER_MODULES } from "../../providers/registry";
 import type { Product } from "../../providers/types";
 import { createPurchase, OPEN_STAGES, PolicyDeniedError, PurchaseConflictError } from "../../transactions/purchases";
@@ -30,7 +31,6 @@ import { coverageAfter, decide, MINIMUM_COVERAGE_HOURS, PREFERRED_COVERAGE_HOURS
 import { buildDecisionInput } from "../run";
 import { appendRunEvent, type RunEventInput } from "./run-log";
 
-const QUOTE_TTL_MS = 5 * 60_000;
 const r1 = (n: number) => (Number.isFinite(n) ? Math.round(n * 10) / 10 : null);
 
 export interface Quote {
@@ -111,30 +111,64 @@ function forecastSummary(f: Forecast) {
   };
 }
 
-function quoteFor(ctx: ToolContext, kind: UtilityKind, product: Product, providerId: string, providerName: string): Quote {
-  const atomic = ngnToTestnetUsdcAtomic(product.amountNgn, env().DEMO_NGN_PER_TESTNET_USDC);
-  const payTo = providerPayTo(kind);
-  const issuedAt = Date.now();
-  const quoteId = `q_${createHash("sha256").update(`${ctx.runId}|${providerId}|${product.code}|${atomic}|${payTo}|${issuedAt}`).digest("hex").slice(0, 16)}`;
-  const quote: Quote = { quoteId, utility: kind, providerId, providerName, product, amountNgn: product.amountNgn, testnetUsdcAtomic: atomic.toString(), payTo, issuedAt, expiresAt: issuedAt + QUOTE_TTL_MS };
-  ctx.quotes.set(quoteId, quote);
+/**
+ * Ask the provider for a real, binding quote (its free quote endpoint). The model only
+ * names the utility and a catalogue product; the recipient comes from the household's
+ * own account record.
+ */
+async function requestProviderQuote(ctx: ToolContext, kind: UtilityKind, product: Product): Promise<Quote | { error: string }> {
+  const [account] = await ctx.db.select().from(s.utilityAccounts).where(and(eq(s.utilityAccounts.householdId, ctx.householdId), eq(s.utilityAccounts.kind, kind)));
+  if (!account) return { error: `The household has no ${kind} account.` };
+  const body = {
+    accountIdentifier: account.identifier,
+    ...(account.network ? { network: account.network } : {}),
+    ...(kind === "data" ? { productCode: product.code } : { amountNgn: product.amountNgn }),
+  };
+  let res: Response;
+  try {
+    res = await (ctx.buyer?.fetchImpl ?? fetch)(new URL(providerQuotePath(kind), env().APP_BASE_URL).toString(), {
+      method: "POST",
+      headers: { "content-type": "application/json", accept: "application/json" },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(20_000),
+    });
+  } catch (err) {
+    return { error: `The provider could not be reached for a quote (${(err as Error).message}).` };
+  }
+  const data = (await res.json().catch(() => null)) as ProviderQuote | { code?: string; message?: string } | null;
+  if (!res.ok || !data || !("quoteId" in data)) {
+    return { error: `The provider did not issue a quote: ${(data as { message?: string } | null)?.message ?? `HTTP ${res.status}`}` };
+  }
+  const quote: Quote = {
+    quoteId: data.quoteId,
+    utility: kind,
+    providerId: data.providerId,
+    providerName: data.providerName,
+    product,
+    amountNgn: data.amountNgn,
+    testnetUsdcAtomic: data.payment.amountAtomic,
+    payTo: data.payment.payTo,
+    issuedAt: Date.parse(data.issuedAt),
+    expiresAt: Date.parse(data.expiresAt),
+  };
+  const check = revalidateQuote(quote);
+  if (!check.valid) return { error: `Quote rejected: ${check.detail}` };
+  ctx.quotes.set(quote.quoteId, quote);
   return quote;
 }
 
-/** Re-derive a quote from the provider catalogue; any difference means it changed. */
+/**
+ * A quote is acceptable only if it is unexpired, pays the provider's REGISTERED wallet
+ * (not whatever the provider says), and its testnet USDC matches its NGN price at the
+ * household's demo rate. The provider honours its own quoted price until expiry.
+ */
 function revalidateQuote(q: Quote): { valid: boolean; detail: string } {
   if (Date.now() > q.expiresAt) return { valid: false, detail: `Quote ${q.quoteId} expired. Request a new quote.` };
-  let fresh: Product;
-  try {
-    fresh = PROVIDER_MODULES[q.utility].resolveProduct(q.utility === "data" ? { productCode: q.product.code } : { amountNgn: q.product.amountNgn });
-  } catch {
-    return { valid: false, detail: "The product is no longer offered." };
+  if (providerPayTo(q.utility) !== q.payTo) return { valid: false, detail: "The quote's payee is not the provider's registered wallet." };
+  if (ngnToTestnetUsdcAtomic(q.amountNgn, env().DEMO_NGN_PER_TESTNET_USDC).toString() !== q.testnetUsdcAtomic) {
+    return { valid: false, detail: "The quote's testnet USDC amount does not match its NGN price at the demo rate." };
   }
-  const atomic = ngnToTestnetUsdcAtomic(fresh.amountNgn, env().DEMO_NGN_PER_TESTNET_USDC).toString();
-  if (fresh.amountNgn !== q.amountNgn || fresh.quantity !== q.product.quantity || atomic !== q.testnetUsdcAtomic || providerPayTo(q.utility) !== q.payTo) {
-    return { valid: false, detail: "The provider's price, quantity or payee changed since the quote. Request a new quote." };
-  }
-  return { valid: true, detail: `Quote ${q.quoteId} is unexpired and matches the provider's current offer.` };
+  return { valid: true, detail: `Quote ${q.quoteId} from ${q.providerName}: unexpired, registered payee, consistent price.` };
 }
 
 async function policyFor(ctx: ToolContext, q: Quote, withWallet: boolean) {
@@ -162,7 +196,7 @@ async function policyFor(ctx: ToolContext, q: Quote, withWallet: boolean) {
   );
 }
 
-const quoteArgs = z.object({ quote_id: z.string().regex(/^q_[0-9a-f]{16}$/), reason: z.string().min(3).max(500) }).strict();
+const quoteArgs = z.object({ quote_id: z.string().regex(/^qt_[0-9a-z]{10,40}$/), reason: z.string().min(3).max(500) }).strict();
 
 export const TOOLS: ToolDefinition[] = [
   {
@@ -306,7 +340,8 @@ export const TOOLS: ToolDefinition[] = [
       const m = PROVIDER_MODULES[args.utility];
       const product = m.listProducts().find((p) => p.code === args.product_code);
       if (!product) return { error: `Unknown product_code "${args.product_code}" for ${args.utility}. Use one from discover_providers.` };
-      const q = quoteFor(ctx, args.utility, product, m.definition.id, m.definition.name);
+      const q = await requestProviderQuote(ctx, args.utility, product);
+      if ("error" in q) return { error: q.error };
       return {
         quote_id: q.quoteId,
         provider_id: q.providerId,
@@ -366,6 +401,7 @@ export const TOOLS: ToolDefinition[] = [
           initiatedBy: "agent",
           runId: ctx.runId,
           idempotencyKey: `${ctx.runId}:${q.quoteId}`,
+          quote: { quoteId: q.quoteId, amountAtomic: q.testnetUsdcAtomic, payTo: q.payTo, expiresAt: new Date(q.expiresAt) },
         });
         purchaseId = p.id;
         ctx.purchaseIds.push(p.id);
