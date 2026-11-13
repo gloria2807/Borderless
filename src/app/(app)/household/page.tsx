@@ -18,11 +18,12 @@ export default async function HouseholdPage() {
   return (
     <>
       <PageHeader
+        eyebrow="Devices"
         title="Household"
         description="Virtual devices that stand in for a prepaid meter and the household's phone line. Balances change only when simulated usage drains them or a provider releases a paid purchase."
       />
       {/* Subgrid keeps each row (device, top-up, history) aligned across the three columns. */}
-      <div className="grid gap-x-6 gap-y-10 lg:grid-cols-3 lg:grid-rows-[auto_1fr_auto_auto] lg:gap-y-4">
+      <div className="grid gap-x-5 gap-y-10 lg:grid-cols-3 lg:grid-rows-[auto_1fr_auto_auto] lg:gap-y-4">
         {o.utilities.map((u) => {
           const options = DEFAULT_PROVIDER[u.kind].listProducts().map((p) => ({
             value: u.kind === "data" ? p.code : String(p.amountNgn),
@@ -32,7 +33,7 @@ export default async function HouseholdPage() {
           const inFlight = o.inFlight.find((p) => p.kind === u.kind) ?? o.awaitingApproval.find((p) => p.kind === u.kind) ?? o.needsAttention.find((p) => p.kind === u.kind);
           return (
             <section key={u.kind} id={u.kind} aria-labelledby={`${u.kind}-title`} className="grid scroll-mt-24 gap-4 lg:row-span-4 lg:grid-rows-subgrid">
-              <h2 id={`${u.kind}-title`} className="text-sm font-semibold text-fg-2">
+              <h2 id={`${u.kind}-title`} className="label">
                 {UTILITY_NAMES[u.kind]}
               </h2>
               {/* On desktop the device fills its subgrid row so the panels below line up. */}
@@ -53,22 +54,22 @@ export default async function HouseholdPage() {
                 {u.history.length ? (
                   <ul className="divide-y divide-line-soft">
                     {u.history.map((h) => (
-                      <li key={h.id} className="flex items-center justify-between gap-3 px-5 py-2.5 text-[13px]">
+                      <li key={h.id} className="flex items-center justify-between gap-3 px-4 py-2.5 text-[13px]">
                         <div className="min-w-0">
                           <Link href={`/transactions/${h.id}`} className="font-medium text-fg hover:underline">
                             {h.label}
                           </Link>
-                          <p className="text-2xs text-fg-3">{dayTime(h.at)}</p>
+                          <p className="mono text-[10.5px] text-fg-3">{dayTime(h.at)}</p>
                         </div>
                         <div className="text-right">
-                          <p className="mono text-green">+{quantity(h.quantity, u.unit)}</p>
+                          <p className="font-medium text-green tabular">+{quantity(h.quantity, u.unit)}</p>
                           <p className="mono text-2xs text-fg-3">{naira(h.amountNgn)}</p>
                         </div>
                       </li>
                     ))}
                   </ul>
                 ) : (
-                  <p className="px-5 py-4 text-[13px] text-fg-3">Nothing bought yet.</p>
+                  <p className="px-4 py-4 text-[13px] text-fg-3">Nothing bought yet.</p>
                 )}
               </Panel>
             </section>

@@ -30,7 +30,7 @@ export function Runway({ utilities, simNow, inFlight }: { utilities: UtilityView
       <div className="grid grid-cols-[minmax(0,1fr)] gap-y-5 sm:grid-cols-[148px_minmax(0,1fr)] sm:gap-x-5">
         {/* Axis */}
         <div className="hidden sm:block" />
-        <div className="relative h-4 text-2xs text-fg-3" aria-hidden>
+        <div className="mono relative h-4 text-[10.5px] text-fg-3" aria-hidden>
           <span className="absolute left-0">Now</span>
           {ticks.map((t) => (
             // On narrow screens the first day label can sit on top of "Now"; drop it there.
@@ -45,7 +45,7 @@ export function Runway({ utilities, simNow, inFlight }: { utilities: UtilityView
           const hours = f.hoursRemaining;
           const pct = hours === null ? 100 : Math.min(100, (hours / HORIZON_H) * 100);
           const tone = URGENCY[f.urgency]!.tone;
-          const barTone = f.urgency === "watch" ? "bg-fg-3" : TONE_BG[tone];
+          const barTone = f.urgency === "watch" ? "bg-fg-2" : TONE_BG[tone];
           const buying = inFlight.find((p) => p.kind === u.kind);
           const beyond = hours === null || hours > HORIZON_H;
           const endText =
@@ -54,27 +54,27 @@ export function Runway({ utilities, simNow, inFlight }: { utilities: UtilityView
           return (
             <div key={u.kind} className="contents">
               <div className="flex items-baseline justify-between gap-3 sm:block">
-                <p className="text-[13px] font-semibold text-fg">{UTILITY_NAMES[u.kind]}</p>
-                <p className="mono text-[13px] text-fg-2">
+                <p className="text-[13px] font-medium text-fg">{UTILITY_NAMES[u.kind]}</p>
+                <p className="mono text-[12px] text-fg-3">
                   {quantity(u.balance, u.unit)}
-                  <span className={cn("ml-2 font-sans text-2xs font-semibold", TONE_TEXT[tone])}>{duration(hours)}</span>
+                  <span className={cn("ml-2 font-sans text-[11.5px] font-semibold", TONE_TEXT[tone])}>{duration(hours)}</span>
                 </p>
               </div>
               <div className="relative -mt-3 h-9 sm:mt-0">
                 {/* Track, with the "running low" zone tinted */}
-                <div className="absolute inset-x-0 top-3 h-3 rounded-sm bg-line-soft" />
-                <div className="absolute top-3 left-0 h-3 rounded-l-sm bg-amber/[0.07]" style={{ width: `${lowPct}%` }} aria-hidden />
+                <div className="absolute inset-x-0 top-3 h-2.5 rounded-full bg-fg/[0.06]" />
+                <div className="absolute top-3 left-0 h-2.5 rounded-l-full bg-amber/[0.12]" style={{ width: `${lowPct}%` }} aria-hidden />
                 {ticks.map((t) => (
-                  <div key={t.pct} aria-hidden className="absolute top-2 h-5 w-px bg-line" style={{ left: `${t.pct}%` }} />
+                  <div key={t.pct} aria-hidden className="absolute top-2 h-[18px] w-px bg-fg/[0.08]" style={{ left: `${t.pct}%` }} />
                 ))}
                 <div
                   role="img"
                   aria-label={`${UTILITY_NAMES[u.kind]}: ${endText.toLowerCase()}, ${URGENCY[f.urgency]!.label.toLowerCase()}`}
-                  className={cn("absolute top-3 left-0 h-3 rounded-sm transition-[width] duration-700", barTone)}
+                  className={cn("absolute top-3 left-0 h-2.5 rounded-full transition-[width] duration-700", barTone)}
                   style={{ width: `${Math.max(pct, 0.8)}%` }}
                 />
                 <p
-                  className={cn("absolute top-[26px] text-2xs whitespace-nowrap", pct > 60 ? "-translate-x-full" : "", TONE_TEXT[tone])}
+                  className={cn("absolute top-[24px] text-[11px] whitespace-nowrap", pct > 60 ? "-translate-x-full" : "", TONE_TEXT[tone])}
                   style={{ left: `${Math.max(pct, 0.8)}%` }}
                 >
                   {endText}
@@ -85,7 +85,7 @@ export function Runway({ utilities, simNow, inFlight }: { utilities: UtilityView
           );
         })}
       </div>
-      <p className="mt-6 text-2xs text-fg-3">
+      <p className="mt-6 border-t border-line-soft pt-3 text-[11.5px] text-fg-3">
         Predictions from the last 6 hours of simulated usage. The tinted zone marks the last 36 hours, when Borderless considers a utility to be running low.
       </p>
     </div>

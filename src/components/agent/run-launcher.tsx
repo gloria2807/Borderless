@@ -50,7 +50,7 @@ export function RunLauncher({ aiAvailable, model, defaultTask }: { aiAvailable: 
       }}
     >
       <div>
-        <label htmlFor={taskId} className="text-[13px] font-medium text-fg-2">
+        <label htmlFor={taskId} className="label">
           Task for the agent
         </label>
         <textarea
@@ -59,11 +59,11 @@ export function RunLauncher({ aiAvailable, model, defaultTask }: { aiAvailable: 
           onChange={(e) => setTask(e.target.value)}
           maxLength={600}
           rows={2}
-          className="mt-1.5 w-full resize-y rounded-md border border-line bg-bg-2 px-3 py-2 text-[13px] text-fg outline-none focus:border-green"
+          className="mt-2 w-full resize-y rounded-lg bg-raised px-3.5 py-2.5 text-[13.5px] leading-relaxed text-fg shadow-ring outline-none transition-shadow focus:shadow-[0_0_0_1.5px_var(--color-green)]"
         />
       </div>
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <fieldset className="inline-flex rounded-md border border-line p-0.5">
+        <fieldset className="inline-flex rounded-full bg-fg/[0.06] p-0.5">
           <legend className="sr-only">Planner</legend>
           {(
             [
@@ -77,8 +77,8 @@ export function RunLauncher({ aiAvailable, model, defaultTask }: { aiAvailable: 
                 key={value}
                 title={disabled ? "Add OPENAI_API_KEY to .env.local to enable the AI agent." : undefined}
                 className={cn(
-                  "flex cursor-pointer items-center gap-1.5 rounded-sm px-3 py-1 text-[13px] has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-green",
-                  mode === value ? "bg-raised text-fg" : "text-fg-3",
+                  "flex cursor-pointer items-center gap-1.5 rounded-full px-3 py-1 text-[12.5px] font-medium transition-colors has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-green",
+                  mode === value ? "bg-raised text-fg shadow-ring" : "text-fg-3 hover:text-fg-2",
                   disabled && "cursor-not-allowed opacity-50",
                 )}
               >
@@ -94,7 +94,7 @@ export function RunLauncher({ aiAvailable, model, defaultTask }: { aiAvailable: 
           Start run
         </Button>
       </div>
-      <p className="text-2xs text-fg-3">
+      <p className="text-[11.5px] text-fg-3">
         The agent proposes; fixed code decides. Purchases use real Stellar testnet x402 payments within your spending rules.
       </p>
     </form>

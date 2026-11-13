@@ -31,10 +31,10 @@ export interface SettingsValues {
 
 function Section({ title, description, children }: { title: string; description: string; children: ReactNode }) {
   return (
-    <section className="grid gap-4 border-b border-line-soft py-6 last:border-b-0 md:grid-cols-[260px_minmax(0,1fr)] md:gap-10">
+    <section className="grid gap-4 border-b border-line-soft py-7 last:border-b-0 md:grid-cols-[260px_minmax(0,1fr)] md:gap-10">
       <div>
-        <h2 className="text-sm font-semibold text-fg">{title}</h2>
-        <p className="mt-1 text-[13px] text-fg-3">{description}</p>
+        <h2 className="text-[13.5px] font-semibold tracking-[-0.005em] text-fg">{title}</h2>
+        <p className="mt-1 text-[12.5px] leading-relaxed text-fg-3">{description}</p>
       </div>
       <div className="space-y-4">{children}</div>
     </section>
@@ -48,7 +48,7 @@ function MoneyField({ label, help, value, onChange }: { label: string; help?: st
       <label htmlFor={id} className="text-[13px] font-medium text-fg-2">
         {label}
       </label>
-      <div className="mt-1.5 flex h-9 max-w-[220px] items-center rounded-md border border-line bg-bg-2 focus-within:border-green">
+      <div className="mt-1.5 flex h-9 max-w-[220px] items-center rounded-lg border border-line bg-raised transition-shadow focus-within:border-green focus-within:shadow-[0_0_0_3px_color-mix(in_srgb,var(--color-green)_15%,transparent)]">
         <span className="pl-3 text-fg-3">₦</span>
         <input
           id={id}
@@ -87,7 +87,7 @@ function ApprovalWindow({ value, onChange }: { value: number; onChange: (n: numb
       <label htmlFor={id} className="text-[13px] font-medium text-fg-2">
         Approval requests expire after
       </label>
-      <select id={id} value={value} onChange={(e) => onChange(Number(e.target.value))} className="mt-1.5 block h-9 rounded-md border border-line bg-bg-2 px-2 text-[13px] text-fg outline-none focus:border-green">
+      <select id={id} value={value} onChange={(e) => onChange(Number(e.target.value))} className="mt-1.5 block h-9 rounded-lg border border-line bg-raised px-2 text-[13px] text-fg outline-none focus:border-green focus:shadow-[0_0_0_3px_color-mix(in_srgb,var(--color-green)_15%,transparent)]">
         {options.map(([s, label]) => (
           <option key={s} value={s}>
             {label}
@@ -131,7 +131,7 @@ export function SettingsForm({ initial, spentNgn }: { initial: SettingsValues; s
       }}
     >
       {/* Authority first: the most important control on this page. */}
-      <div className={cn("mb-2 flex flex-wrap items-center justify-between gap-4 rounded-lg border p-4", v.autoPurchaseEnabled ? "border-line bg-surface" : "border-coral/30 bg-coral-soft")}>
+      <div className={cn("mb-2 flex flex-wrap items-center justify-between gap-4 rounded-lg p-4", v.autoPurchaseEnabled ? "bg-surface shadow-ring" : "bg-coral-soft shadow-[0_0_0_1px_color-mix(in_srgb,var(--color-coral)_30%,transparent)]")}>
         <div className="flex items-start gap-3">
           <ShieldOff className={cn("mt-0.5 size-5", v.autoPurchaseEnabled ? "text-fg-3" : "text-coral")} aria-hidden />
           <div>
@@ -173,9 +173,9 @@ export function SettingsForm({ initial, spentNgn }: { initial: SettingsValues; s
         <MoneyField label="Budget" value={v.budgetAmountNgn} onChange={(n) => set("budgetAmountNgn", n)} />
         <fieldset>
           <legend className="text-[13px] font-medium text-fg-2">Period</legend>
-          <div className="mt-1.5 inline-flex rounded-md border border-line p-0.5">
+          <div className="mt-1.5 inline-flex rounded-full bg-fg/[0.06] p-0.5">
             {(["weekly", "monthly"] as const).map((p) => (
-              <label key={p} className={cn("cursor-pointer rounded-sm px-3 py-1 text-[13px] has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-green", v.budgetPeriod === p ? "bg-raised text-fg" : "text-fg-3")}>
+              <label key={p} className={cn("cursor-pointer rounded-full px-3 py-1 text-[12.5px] font-medium has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-green", v.budgetPeriod === p ? "bg-raised text-fg shadow-ring" : "text-fg-3")}>
                 <input type="radio" name="period" value={p} checked={v.budgetPeriod === p} onChange={() => set("budgetPeriod", p)} className="sr-only" />
                 {p === "weekly" ? "Weekly" : "Monthly"}
               </label>
@@ -187,7 +187,7 @@ export function SettingsForm({ initial, spentNgn }: { initial: SettingsValues; s
       <Section title="Priorities" description="When two needs are equally urgent and the budget can't cover both, the higher one wins.">
         <ol className="max-w-sm space-y-2">
           {v.priorities.map((k, i) => (
-            <li key={k} className="flex items-center gap-3 rounded-md border border-line bg-bg-2 px-3 py-2">
+            <li key={k} className="flex items-center gap-3 rounded-lg border border-line bg-raised px-3 py-2">
               <span className="mono w-4 text-2xs text-fg-3">{i + 1}</span>
               <span className="flex-1 text-[13px] font-medium">{UTILITY_NAMES[k]}</span>
               <button type="button" className="rounded-sm p-1 text-fg-3 hover:bg-raised hover:text-fg disabled:opacity-30" onClick={() => move(i, -1)} disabled={i === 0} aria-label={`Move ${UTILITY_NAMES[k]} up`}>
@@ -207,7 +207,7 @@ export function SettingsForm({ initial, spentNgn }: { initial: SettingsValues; s
           <div className="mt-2 flex flex-wrap gap-2">
             {(["electricity", "airtime", "data"] as const).map((k) => (
               <label key={k} className={cn("flex cursor-pointer items-center gap-2 rounded-md border px-3 py-1.5 text-[13px] has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-green", v.approvedServices.includes(k) ? "border-green/40 bg-green-soft text-fg" : "border-line text-fg-3")}>
-                <input type="checkbox" className="accent-[#b8df76]" checked={v.approvedServices.includes(k)} onChange={() => set("approvedServices", toggleIn(v.approvedServices, k))} />
+                <input type="checkbox" className="accent-green" checked={v.approvedServices.includes(k)} onChange={() => set("approvedServices", toggleIn(v.approvedServices, k))} />
                 {UTILITY_NAMES[k]}
               </label>
             ))}
@@ -218,7 +218,7 @@ export function SettingsForm({ initial, spentNgn }: { initial: SettingsValues; s
           <div className="mt-2 flex flex-wrap gap-2">
             {(["mtn", "airtel", "glo", "t2"] as const).map((n) => (
               <label key={n} className={cn("flex cursor-pointer items-center gap-2 rounded-md border px-3 py-1.5 text-[13px] has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-green", v.approvedNetworks.includes(n) ? "border-green/40 bg-green-soft text-fg" : "border-line text-fg-3")}>
-                <input type="checkbox" className="accent-[#b8df76]" checked={v.approvedNetworks.includes(n)} onChange={() => set("approvedNetworks", toggleIn(v.approvedNetworks, n))} />
+                <input type="checkbox" className="accent-green" checked={v.approvedNetworks.includes(n)} onChange={() => set("approvedNetworks", toggleIn(v.approvedNetworks, n))} />
                 {NETWORK_NAMES[n]}
               </label>
             ))}
@@ -231,7 +231,7 @@ export function SettingsForm({ initial, spentNgn }: { initial: SettingsValues; s
           <label htmlFor={nameId} className="text-[13px] font-medium text-fg-2">
             Household name
           </label>
-          <input id={nameId} value={v.householdName} onChange={(e) => set("householdName", e.target.value)} maxLength={60} className="mt-1.5 h-9 w-full max-w-sm rounded-md border border-line bg-bg-2 px-3 text-[13px] text-fg outline-none focus:border-green" />
+          <input id={nameId} value={v.householdName} onChange={(e) => set("householdName", e.target.value)} maxLength={60} className="mt-1.5 h-9 w-full max-w-sm rounded-lg border border-line bg-raised px-3 text-[13px] text-fg outline-none focus:border-green focus:shadow-[0_0_0_3px_color-mix(in_srgb,var(--color-green)_15%,transparent)]" />
         </div>
       </Section>
 

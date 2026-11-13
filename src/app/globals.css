@@ -6,43 +6,61 @@
  * shortage / warning, coral = critical / error, cyan = technical detail only.
  */
 @theme {
-  --color-bg: #0b1110;
-  --color-bg-2: #101916;
-  --color-surface: #151f1b;
-  --color-raised: #1b2722;
-  --color-line: #293831;
-  --color-line-soft: #1f2c26;
+  /* Canvas and surfaces: warm paper, panels lifted by hairline rings rather than borders. */
+  --color-bg: #f4f3ee;
+  --color-bg-2: #eeece5;
+  --color-surface: #fbfaf7;
+  --color-raised: #ffffff;
+  --color-line: rgb(12 13 12 / 0.11);
+  --color-line-soft: rgb(12 13 12 / 0.06);
+  --color-ink: #0c0d0c;
+  --color-ink-2: #1c1e1b;
 
-  --color-fg: #f1f5ef;
-  --color-fg-2: #a1aea5;
-  /* Brief specifies #718078 for muted text; it measures ~3.9:1 on our surfaces, below
-     WCAG AA (4.5:1) for small text. Lifted to the nearest tone of the same hue that passes. */
-  --color-fg-3: #8a988f;
+  /* Text. fg-4 is decorative only (2.3:1): never used for information on its own. */
+  --color-fg: #0c0d0c;
+  --color-fg-2: #4a4e49;
+  --color-fg-3: #5f635c;
+  --color-fg-4: #a3a69e;
 
-  --color-green: #b8df76;
-  --color-green-deep: #223b25;
-  --color-green-soft: #1c2c20;
-  --color-cyan: #78dce8;
-  --color-coral: #ff907d;
-  --color-amber: #f2c66d;
+  /* Semantic accents, deepened to pass WCAG AA (4.5:1+) on the canvas and on their soft fills. */
+  --color-green: #0a7a4b;
+  --color-green-hover: #086a41;
+  --color-green-deep: #c9e8d6;
+  --color-green-soft: #dcf0e4;
+  /* Green for text on the dark ink bands (7.9:1 on ink). */
+  --color-green-bright: #8fd8b0;
+  --color-amber-bright: #f3c77a;
+  --color-amber: #8f5b00;
+  --color-amber-soft: #f8ebcf;
+  --color-coral: #b8392a;
+  --color-coral-soft: #f9e1db;
+  --color-cyan: #0a6577;
+  --color-cyan-soft: #dcf0f3;
 
-  --color-amber-soft: #2a2618;
-  --color-coral-soft: #2d1c19;
-  --color-cyan-soft: #15272a;
+  /* Virtual meter display: a reflective LCD, legible in daylight. */
+  --color-lcd: #dfe6d3;
+  --color-lcd-fg: #1b2615;
+  --color-lcd-dim: #4f5d43;
 
-  --font-sans: var(--font-manrope), ui-sans-serif, system-ui, sans-serif;
+--font-sans: var(--font-manrope), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-plex-mono), ui-monospace, "SFMono-Regular", monospace;
 
   --radius-sm: 4px;
   --radius-md: 6px;
-  --radius-lg: 10px;
+  --radius-lg: 12px;
+
+  --shadow-ring: 0 0 0 1px rgb(12 13 12 / 0.07), 0 1px 2px rgb(12 13 12 / 0.04);
+  --shadow-pop: 0 0 0 1px rgb(12 13 12 / 0.08), 0 12px 32px -8px rgb(12 13 12 / 0.18);
 
   --text-2xs: 0.6875rem;
   --text-2xs--line-height: 1rem;
+  --text-label: 0.625rem;
+  --text-label--line-height: 0.875rem;
+  --text-label--letter-spacing: 0.14em;
 
   --animate-fade-in: fade-in 240ms ease-out both;
   --animate-pulse-dot: pulse-dot 1.6s ease-in-out infinite;
-  --animate-credit: credit 900ms ease-out both;
+  --animate-credit: credit 900ms ease-out backwards;
 }
 
 /* Never starts fully transparent: if an animation is paused (background tab), content stays readable. */
@@ -61,16 +79,15 @@
 
 @layer base {
   html {
-    color-scheme: dark;
+    color-scheme: light;
     -webkit-text-size-adjust: 100%;
   }
   body {
     background: var(--color-bg);
     color: var(--color-fg);
     font-family: var(--font-sans);
-    font-size: 14px;
+    font-size: 13.5px;
     line-height: 1.5;
-    font-feature-settings: "cv11", "ss01";
     -webkit-font-smoothing: antialiased;
   }
   ::selection {
@@ -83,6 +100,22 @@
     border-radius: var(--radius-sm);
   }
   /* Numbers line up in tables and readouts. */
+  /* Recur-style mono section label: small, uppercase, wide-tracked, quiet. */
+  .label {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    line-height: 14px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--color-fg-3);
+  }
+  /* Faint grid used behind the landing hero. */
+  .grid-paper {
+    background-image:
+      linear-gradient(to right, rgb(12 13 12 / 0.045) 1px, transparent 1px),
+      linear-gradient(to bottom, rgb(12 13 12 / 0.045) 1px, transparent 1px);
+    background-size: 48px 48px;
+  }
   .tabular { font-variant-numeric: tabular-nums; }
   .mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
 }

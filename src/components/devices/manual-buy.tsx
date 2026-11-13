@@ -37,14 +37,14 @@ export function ManualBuy({ kind, options, disabledReason }: { kind: "electricit
       }}
     >
       <div className="min-w-0 flex-1">
-        <label htmlFor={id} className="text-2xs text-fg-3">
+        <label htmlFor={id} className="label">
           Top up yourself
         </label>
         <select
           id={id}
           value={choice}
           onChange={(e) => setChoice(e.target.value)}
-          className="mt-1 h-8 w-full rounded-md border border-line bg-bg-2 px-2 text-[13px] text-fg"
+          className="mt-1.5 h-8 w-full rounded-lg border border-line bg-raised px-2 text-[13px] text-fg"
         >
           {options.map((o) => (
             <option key={o.value} value={o.value}>

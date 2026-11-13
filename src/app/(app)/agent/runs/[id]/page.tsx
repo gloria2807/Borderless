@@ -21,6 +21,7 @@ export default async function RunPage({ params }: { params: Promise<{ id: string
         <ArrowLeft className="size-3.5" aria-hidden /> Agent
       </Link>
       <PageHeader
+        eyebrow={`Run ${id}`}
         title="Agent operations"
         description="Each step below is a backend event, recorded before it is shown. Expand any step to see the exact data the agent and the payment code worked with."
       />

@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowUpRight, ReceiptText } from "lucide-react";
-import { EmptyState, PageHeader, Panel, StatusPill, TestnetTag } from "@/components/ui/primitives";
+import { EmptyState, KpiStrip, PageHeader, Panel, StatusPill, TestnetTag } from "@/components/ui/primitives";
 import { atomicToDecimal, dayTime, maskMsisdn, meterId, naira, shortHash, UTILITY_NAMES } from "@/lib/format";
 import { FULFILMENT_STATUS, PAYMENT_STATUS, STAGE } from "@/lib/status";
 import { DEMO_HOUSEHOLD } from "@/server/api";
@@ -63,31 +63,24 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
   return (
     <>
       <PageHeader
+        eyebrow="Ledger"
         title="Transactions"
         description="Every purchase, with its Stellar testnet payment and its simulated fulfilment recorded separately."
         actions={<TestnetTag />}
       />
 
-      <div className="mb-6 grid gap-4 sm:grid-cols-3">
-        <div className="rounded-lg border border-line bg-surface px-4 py-3">
-          <p className="text-2xs text-fg-3">Purchases</p>
-          <p className="mono mt-1 text-xl">{all.length}</p>
-        </div>
-        <div className="rounded-lg border border-line bg-surface px-4 py-3">
-          <p className="text-2xs text-fg-3">Confirmed spend (household value)</p>
-          <p className="mono mt-1 text-xl">{naira(totalNgn)}</p>
-        </div>
-        <div className="rounded-lg border border-line bg-surface px-4 py-3">
-          <p className="text-2xs text-fg-3">Settled on testnet</p>
-          <p className="mono mt-1 text-xl">
-            {atomicToDecimal(totalUsdc)} <span className="text-sm text-fg-3">USDC</span>
-          </p>
-        </div>
-      </div>
+      <KpiStrip
+        className="mb-6"
+        items={[
+          { label: "Purchases", value: String(all.length), hint: `${paid.length} paid and confirmed` },
+          { label: "Confirmed spend", value: naira(totalNgn), hint: "Household value" },
+          { label: "Settled on testnet", value: <>{atomicToDecimal(totalUsdc)} <span className="text-[13px] font-normal tracking-normal text-fg-3">USDC</span></>, hint: "Testnet USDC, no monetary value" },
+        ]}
+      />
 
       <form role="search" aria-label="Search transactions" method="get" className="mb-4 flex flex-wrap items-end gap-3">
         <div className="min-w-[220px] flex-1">
-          <label htmlFor="tx-q" className="text-[13px] font-medium text-fg-2">
+          <label htmlFor="tx-q" className="label">
             Search
           </label>
           <input
@@ -97,14 +90,14 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
             defaultValue={q}
             maxLength={100}
             placeholder="Provider, product, phone or meter, transaction hash…"
-            className="mt-1.5 h-9 w-full rounded-md border border-line bg-bg-2 px-3 text-[13px] text-fg outline-none placeholder:text-fg-3 focus:border-green"
+            className="mt-1.5 h-9 w-full rounded-lg border border-line bg-raised px-3 text-[13px] text-fg outline-none placeholder:text-fg-3 focus:border-green focus:shadow-[0_0_0_3px_color-mix(in_srgb,var(--color-green)_15%,transparent)]"
           />
         </div>
         <div>
-          <label htmlFor="tx-utility" className="text-[13px] font-medium text-fg-2">
+          <label htmlFor="tx-utility" className="label">
             Utility
           </label>
-          <select id="tx-utility" name="utility" defaultValue={utility} className="mt-1.5 block h-9 rounded-md border border-line bg-bg-2 px-2 text-[13px] text-fg outline-none focus:border-green">
+          <select id="tx-utility" name="utility" defaultValue={utility} className="mt-1.5 block h-9 rounded-lg border border-line bg-raised px-2 text-[13px] text-fg outline-none focus:border-green focus:shadow-[0_0_0_3px_color-mix(in_srgb,var(--color-green)_15%,transparent)]">
             <option value="">All</option>
             {(["electricity", "airtime", "data"] as const).map((k) => (
               <option key={k} value={k}>
@@ -114,10 +107,10 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
           </select>
         </div>
         <div>
-          <label htmlFor="tx-status" className="text-[13px] font-medium text-fg-2">
+          <label htmlFor="tx-status" className="label">
             Status
           </label>
-          <select id="tx-status" name="status" defaultValue={status} className="mt-1.5 block h-9 rounded-md border border-line bg-bg-2 px-2 text-[13px] text-fg outline-none focus:border-green">
+          <select id="tx-status" name="status" defaultValue={status} className="mt-1.5 block h-9 rounded-lg border border-line bg-raised px-2 text-[13px] text-fg outline-none focus:border-green focus:shadow-[0_0_0_3px_color-mix(in_srgb,var(--color-green)_15%,transparent)]">
             <option value="">All</option>
             {Object.entries(STATUS_FILTERS).map(([k, v]) => (
               <option key={k} value={k}>
@@ -126,7 +119,7 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
             ))}
           </select>
         </div>
-        <button type="submit" className="h-9 rounded-md border border-line bg-raised px-4 text-[13px] font-semibold text-fg hover:border-fg-3 focus-visible:outline-2 focus-visible:outline-green">
+        <button type="submit" className="h-9 rounded-full bg-ink px-4 text-[13px] font-medium text-white transition-colors hover:bg-ink-2 focus-visible:outline-2 focus-visible:outline-green">
           Search
         </button>
         {filtering && (
@@ -156,7 +149,7 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
             <div className="hidden overflow-x-auto md:block">
               <table className="w-full text-left text-[13px]">
                 <caption className="sr-only">Purchases, newest first</caption>
-                <thead className="border-b border-line-soft text-2xs text-fg-3">
+                <thead className="mono border-b border-line-soft bg-bg/60 text-[10px] tracking-[0.08em] text-fg-3 uppercase">
                   <tr>
                     <th scope="col" className="px-5 py-2.5 font-medium">Purchase</th>
                     <th scope="col" className="px-3 py-2.5 font-medium">Recipient</th>
@@ -169,17 +162,17 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
                 </thead>
                 <tbody className="divide-y divide-line-soft">
                   {rows.map((p) => (
-                    <tr key={p.id} className="group relative hover:bg-raised/50">
+                    <tr key={p.id} className="group relative transition-colors hover:bg-fg/[0.025]">
                       <td className="px-5 py-3">
-                        <Link href={`/transactions/${p.id}`} className="font-semibold text-fg after:absolute after:inset-0 group-hover:underline">
+                        <Link href={`/transactions/${p.id}`} className="font-medium text-fg after:absolute after:inset-0 group-hover:underline">
                           {p.label}
                         </Link>
-                        <p className="mono text-2xs text-fg-3">
-                          {UTILITY_NAMES[p.kind]}, {p.id}
+                        <p className="mono mt-0.5 text-[10.5px] text-fg-3">
+                          {UTILITY_NAMES[p.kind]} · {p.id}
                         </p>
                       </td>
                       <td className="mono px-3 py-3 whitespace-nowrap text-fg-2">{recipientOf(p)}</td>
-                      <td className="mono px-3 py-3 text-right">{naira(p.amountNgn)}</td>
+                      <td className="px-3 py-3 text-right font-medium tabular">{naira(p.amountNgn)}</td>
                       <td className="mono px-3 py-3 text-right whitespace-nowrap text-fg-2">{p.amountAtomic ? `${atomicToDecimal(p.amountAtomic)} ${p.asset}` : "None"}</td>
                       <td className="px-3 py-3">
                         <Statuses p={p} />

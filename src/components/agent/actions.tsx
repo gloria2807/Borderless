@@ -49,13 +49,17 @@ interface PendingPurchase {
 export function ApprovalPrompt({ p }: { p: PendingPurchase }) {
   const { run, pending } = useApiAction();
   return (
-    <div className="flex flex-wrap items-center gap-x-4 gap-y-3 rounded-lg border border-amber/30 bg-amber-soft px-4 py-3">
-      <ShieldCheck className="size-5 shrink-0 text-amber" aria-hidden />
+    <div className="relative flex flex-wrap items-center gap-x-4 gap-y-3 overflow-hidden rounded-lg bg-surface py-3.5 pr-4 pl-5 shadow-ring">
+      <span aria-hidden className="absolute inset-y-0 left-0 w-[3px] bg-amber" />
+      <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-amber-soft">
+        <ShieldCheck className="size-4 text-amber" aria-hidden />
+      </span>
       <div className="min-w-0 flex-1">
-        <p className="text-[13px] font-semibold text-fg">
-          Borderless wants to buy {p.label} for <span className="mono">{naira(p.amountNgn)}</span>
+        <p className="label mb-1 text-amber">Approval requested</p>
+        <p className="text-[13.5px] font-semibold text-fg">
+          Buy {p.label} for <span className="tabular">{naira(p.amountNgn)}</span>
         </p>
-        <p className="text-[13px] text-fg-2">It's above your approval threshold, so nothing is paid until you approve.</p>
+        <p className="text-[12.5px] text-fg-2">It's above your approval threshold, so nothing is paid until you approve these exact terms.</p>
         {p.approvalTerms && <ApprovalTermsLine t={p.approvalTerms} hash={p.approvalTermsHash ?? null} />}
       </div>
       <div className="flex gap-2">
@@ -82,16 +86,20 @@ export function ApprovalPrompt({ p }: { p: PendingPurchase }) {
 export function AttentionPrompt({ p }: { p: PendingPurchase }) {
   const { run, pending } = useApiAction();
   return (
-    <div className="flex flex-wrap items-center gap-x-4 gap-y-3 rounded-lg border border-coral/30 bg-coral-soft px-4 py-3">
-      <CircleAlert className="size-5 shrink-0 text-coral" aria-hidden />
+    <div className="relative flex flex-wrap items-center gap-x-4 gap-y-3 overflow-hidden rounded-lg bg-surface py-3.5 pr-4 pl-5 shadow-ring">
+      <span aria-hidden className="absolute inset-y-0 left-0 w-[3px] bg-coral" />
+      <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-coral-soft">
+        <CircleAlert className="size-4 text-coral" aria-hidden />
+      </span>
       <div className="min-w-0 flex-1">
-        <p className="text-[13px] font-semibold text-fg">
-          {UTILITY_NAMES[p.kind]} purchase needs attention <span className="mono font-normal text-fg-2">{naira(p.amountNgn)}</span>
+        <p className="label mb-1 text-coral">Needs attention</p>
+        <p className="text-[13.5px] font-semibold text-fg">
+          {UTILITY_NAMES[p.kind]} purchase needs attention <span className="font-normal text-fg-2 tabular">{naira(p.amountNgn)}</span>
         </p>
-        <p className="text-[13px] text-fg-2">{p.failureMessage ?? "The payment and fulfilment states need to be reconciled."}</p>
+        <p className="text-[12.5px] text-fg-2">{p.failureMessage ?? "The payment and fulfilment states need to be reconciled."}</p>
       </div>
       <div className="flex gap-2">
-        <Link href={`/transactions/${p.id}`} className="inline-flex h-8 items-center rounded-md px-3 text-[13px] font-semibold text-fg-2 hover:bg-raised hover:text-fg">
+        <Link href={`/transactions/${p.id}`} className="inline-flex h-7 items-center rounded-full px-3 text-[12.5px] font-medium text-fg-2 hover:bg-fg/[0.06] hover:text-fg">
           Details
         </Link>
         <ConfirmButton

@@ -14,6 +14,7 @@ export default async function AccountsPage() {
   return (
     <>
       <PageHeader
+        eyebrow="Household"
         title="Utility accounts"
         description="The household's prepaid meter and phone line, the providers that can serve each one, and what Borderless has bought for it. Providers are paid only at their registered testnet wallet."
       />
@@ -56,7 +57,7 @@ export default async function AccountsPage() {
                   <h3 className="mb-2 text-[13px] font-semibold text-fg-2">Providers that can serve this account</h3>
                   <ul className="space-y-2">
                     {a.providers.map((p) => (
-                      <li key={p.id} className="rounded-md border border-line-soft bg-bg-2 px-3 py-2.5">
+                      <li key={p.id} className="rounded-lg bg-bg px-3 py-2.5 shadow-[inset_0_0_0_1px_rgb(12_13_12/0.07)]">
                         <div className="flex flex-wrap items-center gap-2">
                           <span className="text-[13px] font-semibold text-fg">{p.name}</span>
                           {p.isDefault && <span className="text-2xs text-fg-3">default for manual top-ups</span>}

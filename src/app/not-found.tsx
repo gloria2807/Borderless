@@ -7,7 +7,7 @@ export default function NotFound() {
         <p className="mono text-2xs text-fg-3">404</p>
         <h1 className="mt-2 text-lg font-semibold">There's nothing at this address</h1>
         <p className="mt-1 text-[13px] text-fg-2">The transaction or page may have been cleared by a demo reset.</p>
-        <Link href="/" className="mt-4 inline-flex h-9 items-center rounded-md bg-green px-4 text-sm font-semibold text-[#10200f]">
+        <Link href="/overview" className="mt-4 inline-flex h-9 items-center rounded-full bg-ink px-4 text-[13px] font-medium text-white">
           Go to overview
         </Link>
       </div>

@@ -11,7 +11,7 @@ export function AuthorityPanel({ o }: { o: HouseholdOverview }) {
       title="Spending authority"
       description="Enforced on the server before any payment is signed"
       actions={
-        <Link href="/settings" className="text-[13px] font-medium text-fg-2 hover:text-fg">
+        <Link href="/settings" className="text-[12.5px] font-medium text-fg-2 hover:text-fg">
           Change
         </Link>
       }
@@ -21,24 +21,33 @@ export function AuthorityPanel({ o }: { o: HouseholdOverview }) {
         {p.autoPurchaseEnabled ? <StatusPill tone="positive" pulse={false}>On</StatusPill> : <StatusPill tone="critical" pulse={false}>Off, recommendations only</StatusPill>}
       </div>
       <dl className="divide-y divide-line-soft">
+        <KeyValue label="Left to spend" mono>{naira(Math.min(o.budget.summary.agentAuthorityRemainingNgn, o.budget.summary.remainingNgn))}</KeyValue>
         <KeyValue label="Per purchase, up to" mono>{naira(p.perPurchaseLimitNgn)}</KeyValue>
         <KeyValue label="Asks you first above" mono>{naira(p.manualApprovalThresholdNgn)}</KeyValue>
+        {p.intelligenceCapNgn !== undefined && <KeyValue label="Per information purchase" mono>{naira(p.intelligenceCapNgn)}</KeyValue>}
+      </dl>
+      <details className="group mt-1">
+        <summary className="flex cursor-pointer list-none items-center justify-between py-2 text-[12.5px] font-medium text-fg-2 hover:text-fg">
+          <span>All rules</span>
+          <span className="text-[11.5px] text-fg-3 group-open:hidden">Show</span>
+          <span className="hidden text-[11.5px] text-fg-3 group-open:inline">Hide</span>
+        </summary>
+      <dl className="divide-y divide-line-soft border-t border-line-soft">
         <KeyValue label="Total agent limit this period" mono>{naira(p.overallAgentLimitNgn)}</KeyValue>
         {p.dailyAgentBudgetNgn !== undefined && <KeyValue label="Per day, up to" mono>{naira(p.dailyAgentBudgetNgn)}</KeyValue>}
         {p.taskBudgetNgn !== undefined && <KeyValue label="Per run, up to" mono>{naira(p.taskBudgetNgn)}</KeyValue>}
         {!!p.reserveNgn && <KeyValue label="Kept in reserve" mono>{naira(p.reserveNgn)}</KeyValue>}
-        {p.intelligenceCapNgn !== undefined && <KeyValue label="Per information purchase" mono>{naira(p.intelligenceCapNgn)}</KeyValue>}
         {Object.entries(p.maxPerUtilityNgn ?? {}).map(([k, n]) => (
           <KeyValue key={k} label={`${UTILITY_NAMES[k as keyof typeof UTILITY_NAMES]} cap`} mono>{naira(n ?? 0)}</KeyValue>
         ))}
-        <KeyValue label="Left to spend" mono>{naira(Math.min(o.budget.summary.agentAuthorityRemainingNgn, o.budget.summary.remainingNgn))}</KeyValue>
         <KeyValue label="Priorities">{o.priorities.map((k) => UTILITY_NAMES[k]).join(", then ")}</KeyValue>
         <KeyValue label="Approved services">{p.approvedServices.map((k) => UTILITY_NAMES[k]).join(", ") || "None"}</KeyValue>
         <KeyValue label="Approved networks">{p.approvedNetworks.map((n) => NETWORK_NAMES[n]).join(", ") || "None"}</KeyValue>
       </dl>
-      <div className="mt-4 rounded-md border border-line-soft bg-bg-2 p-3">
+      </details>
+      <div className="mt-3 rounded-lg bg-bg p-3 shadow-[inset_0_0_0_1px_rgb(12_13_12/0.07)]">
         <div className="flex items-center justify-between gap-2">
-          <span className="text-[13px] font-medium text-fg-2">Payment wallet</span>
+          <span className="label">Payment wallet</span>
           <TestnetTag />
         </div>
         <dl className="mt-2 space-y-1 text-2xs">

@@ -21,18 +21,18 @@ export function RecentRuns({ runs }: { runs: RunSummaryView[] }) {
         const st = STATUS[r.status] ?? { label: r.status, tone: "neutral" as Tone };
         return (
           <li key={r.id}>
-            <Link href={`/agent/runs/${r.id}`} className="flex items-center gap-3 px-5 py-3 hover:bg-raised/40">
+            <Link href={`/agent/runs/${r.id}`} className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-fg/[0.03]">
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
                   <StatusPill tone={st.tone} pulse={r.status === "running"}>
                     {st.label}
                   </StatusPill>
-                  <span className="text-2xs text-fg-3">
+                  <span className="mono text-[10.5px] text-fg-3">
                     {r.mode === "ai" ? "AI" : "Deterministic"} · {when(r.startedAt)}
                   </span>
                 </div>
-                <p className="mt-1 truncate text-[13px] text-fg-2">{r.summary ?? r.task}</p>
-                <p className="text-2xs text-fg-3">
+                <p className="mt-1.5 truncate text-[13px] text-fg">{r.summary ?? r.task}</p>
+                <p className="mt-0.5 text-[11.5px] text-fg-3">
                   {r.steps} steps · {r.purchaseCount} purchase{r.purchaseCount === 1 ? "" : "s"}
                 </p>
               </div>

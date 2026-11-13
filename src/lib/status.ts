@@ -45,7 +45,7 @@ export const TONE_TEXT: Record<Tone, string> = {
   critical: "text-coral",
   info: "text-cyan",
   neutral: "text-fg-2",
-  progress: "text-fg",
+  progress: "text-fg-2",
 };
 
 export const TONE_BG: Record<Tone, string> = {

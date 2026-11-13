@@ -29,15 +29,15 @@ export function ActivityTimeline({ events, ascending = false, dense = false }: {
         const Icon = e.type === "payment.failed" ? Ban : CATEGORY_ICON[e.category as keyof typeof CATEGORY_ICON] ?? Gauge;
         const last = i === list.length - 1;
         return (
-          <li key={e.id} className="relative grid grid-cols-[20px_minmax(0,1fr)] gap-3 pb-4 animate-fade-in">
-            {!last && <span aria-hidden className="absolute top-6 bottom-0 left-[9.5px] w-px bg-line-soft" />}
-            <span className={cn("mt-0.5 flex size-5 items-center justify-center rounded-full bg-bg-2", SEVERITY[e.severity])}>
-              <Icon className="size-3.5" aria-hidden />
+          <li key={e.id} className="relative grid grid-cols-[22px_minmax(0,1fr)] gap-3 pb-4 animate-fade-in">
+            {!last && <span aria-hidden className="absolute top-6 bottom-0 left-[10.5px] w-px bg-fg/[0.07]" />}
+            <span className={cn("mt-px flex size-[22px] items-center justify-center rounded-full bg-raised shadow-ring", SEVERITY[e.severity])}>
+              <Icon className="size-3" aria-hidden />
             </span>
             <div className="min-w-0">
               <div className="flex items-baseline justify-between gap-3">
                 <p className={cn("text-[13px] font-medium", e.severity === "critical" ? "text-coral" : "text-fg")}>{e.title}</p>
-                <time className="mono shrink-0 text-2xs text-fg-3" dateTime={e.simTime} title={`Household time ${dayTime(e.simTime)}`}>
+                <time className="mono shrink-0 text-[10.5px] text-fg-3" dateTime={e.simTime} title={`Household time ${dayTime(e.simTime)}`}>
                   {clock(e.simTime)}
                 </time>
               </div>

@@ -24,7 +24,7 @@ export function VirtualPhone({ u, simNow }: { u: UtilityView; simNow: string }) 
   }));
 
   return (
-    <div className="rounded-lg border border-line bg-raised p-4">
+    <div className="rounded-lg bg-surface p-4 shadow-ring">
       <div className="flex items-center justify-between">
         <div>
           <p className="text-[13px] font-semibold">{isData ? "Data line" : "Airtime line"}</p>
@@ -34,11 +34,11 @@ export function VirtualPhone({ u, simNow }: { u: UtilityView; simNow: string }) 
       </div>
 
       {/* Handset */}
-      <div className="mx-auto mt-4 w-full max-w-[280px] rounded-[26px] border border-line bg-bg p-2 shadow-[0_1px_0_rgba(255,255,255,0.04)_inset]">
-        <div className="overflow-hidden rounded-[20px] border border-line-soft bg-bg-2">
+      <div className="mx-auto mt-4 w-full max-w-[280px] rounded-[28px] bg-ink p-[7px] shadow-[0_10px_30px_-12px_rgb(12_13_12/0.35)]">
+        <div className="overflow-hidden rounded-[22px] bg-raised">
           <div className="flex items-center justify-between px-4 pt-2.5 pb-1 text-2xs text-fg-2">
             <span className="mono">{clock(simNow)}</span>
-            <span className="h-1.5 w-14 rounded-full bg-line" aria-hidden />
+            <span className="h-1.5 w-14 rounded-full bg-ink" aria-hidden />
             <span className="flex items-center gap-1">
               <span className="font-semibold">{network}</span>
               {isData && <span className="mono text-[10px]">4G</span>}

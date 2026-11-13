@@ -3,7 +3,7 @@ import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 import { loadScenario } from "./helpers";
 
-const PAGES = ["/", "/agent", "/household", "/accounts", "/providers", "/transactions", "/settings"];
+const PAGES = ["/", "/overview", "/agent", "/household", "/accounts", "/providers", "/transactions", "/settings"];
 
 test.beforeAll(async ({ request }) => loadScenario(request, "both-low"));
 
@@ -19,7 +19,7 @@ for (const path of PAGES) {
 }
 
 test("keyboard: every page is reachable from the navigation with visible focus", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("/overview");
   await page.keyboard.press("Tab");
   await page.keyboard.press("Tab");
   const focused = page.locator(":focus");
@@ -28,5 +28,6 @@ test("keyboard: every page is reachable from the navigation with visible focus",
   expect(outline).toBe("solid");
   await page.keyboard.press("Tab");
   await page.keyboard.press("Enter");
-  await expect(page).toHaveURL(/\/agent$/);
+  // The nav is grouped: Overview, Household, Accounts, then the agent group.
+  await expect(page).toHaveURL(/\/household$/);
 });

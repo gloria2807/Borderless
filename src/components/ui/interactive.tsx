@@ -24,7 +24,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       {children}
       <div aria-live="polite" className="pointer-events-none fixed right-4 bottom-4 z-50 flex w-[min(380px,calc(100vw-2rem))] flex-col gap-2">
         {toasts.map((t) => (
-          <div key={t.id} role="status" className="pointer-events-auto flex animate-fade-in gap-3 rounded-md border border-line bg-raised p-3 shadow-[0_8px_24px_rgba(0,0,0,0.35)]">
+          <div key={t.id} role="status" className="pointer-events-auto flex animate-fade-in gap-3 rounded-lg bg-raised p-3 shadow-pop">
             {t.tone === "positive" ? <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-green" /> : t.tone === "critical" ? <CircleAlert className="mt-0.5 size-4 shrink-0 text-coral" /> : <Info className="mt-0.5 size-4 shrink-0 text-cyan" />}
             <div className="min-w-0 flex-1">
               <p className="text-[13px] font-semibold text-fg">{t.title}</p>
@@ -129,10 +129,10 @@ export function Toggle({ checked, onChange, label, disabled, id }: { checked: bo
       onClick={() => onChange(!checked)}
       className={cn(
         "relative inline-flex h-5 w-9 shrink-0 items-center rounded-full border transition-colors disabled:opacity-50",
-        checked ? "border-green bg-green" : "border-line bg-raised",
+        checked ? "border-green bg-green" : "border-transparent bg-fg/[0.14]",
       )}
     >
-      <span className={cn("inline-block size-3.5 rounded-full transition-transform", checked ? "translate-x-[18px] bg-[#10200f]" : "translate-x-[2px] bg-fg-3")} />
+      <span className={cn("inline-block size-3.5 rounded-full transition-transform", checked ? "translate-x-[17px] bg-white" : "translate-x-[2px] bg-white shadow-sm")} />
     </button>
   );
 }
@@ -171,14 +171,14 @@ export function ConfirmButton({
         ref={ref}
         aria-labelledby={titleId}
         aria-describedby={bodyId}
-        className="m-auto w-[min(440px,calc(100vw-2rem))] rounded-lg border border-line bg-raised p-0 text-fg backdrop:bg-black/60"
+        className="m-auto w-[min(440px,calc(100vw-2rem))] rounded-xl bg-raised p-0 text-fg shadow-pop backdrop:bg-ink/30 backdrop:backdrop-blur-[2px]"
         onClick={(e) => e.target === ref.current && ref.current?.close()}
       >
         <div className="p-5">
-          <h2 id={titleId} className="text-base font-semibold">{title}</h2>
+          <h2 id={titleId} className="text-[15px] font-semibold tracking-[-0.01em]">{title}</h2>
           <div id={bodyId} className="mt-2 text-[13px] text-fg-2">{body}</div>
         </div>
-        <div className="flex justify-end gap-2 border-t border-line-soft px-5 py-3">
+        <div className="flex justify-end gap-2 border-t border-line-soft bg-surface px-5 py-3">
           <Button variant="ghost" size="sm" onClick={() => ref.current?.close()}>
             Cancel
           </Button>

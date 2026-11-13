@@ -10,7 +10,7 @@ test.skip(!process.env.E2E_LIVE, "Set E2E_LIVE=1 to run the live testnet payment
 test("need → decision → x402 payment → fulfilment → updated device → receipt", async ({ page, request }) => {
   test.setTimeout(180_000);
   await loadScenario(request, "both-low");
-  await page.goto("/");
+  await page.goto("/overview");
   await assess(page);
 
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Powered and connected");

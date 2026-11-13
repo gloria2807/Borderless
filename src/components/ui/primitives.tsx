@@ -6,7 +6,7 @@ export const cn = (...xs: (string | false | null | undefined)[]) => xs.filter(Bo
 
 // ── Button ──────────────────────────────────────────────────────────────────
 type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
-  variant?: "primary" | "secondary" | "ghost" | "danger";
+  variant?: "primary" | "dark" | "secondary" | "ghost" | "danger";
   size?: "sm" | "md";
   loading?: boolean;
 };
@@ -18,13 +18,14 @@ export function Button({ variant = "secondary", size = "md", loading, disabled, 
       disabled={disabled || loading}
       aria-busy={loading || undefined}
       className={cn(
-        "inline-flex items-center justify-center gap-2 rounded-md font-semibold whitespace-nowrap transition-colors",
+        "inline-flex items-center justify-center gap-1.5 rounded-full font-medium whitespace-nowrap transition-[background-color,color,box-shadow] duration-150",
         "disabled:cursor-not-allowed disabled:opacity-50",
-        size === "sm" ? "h-8 px-3 text-[13px]" : "h-9 px-4 text-sm",
-        variant === "primary" && "bg-green text-[#10200f] hover:bg-[#c7e88e] active:bg-[#a6cc66]",
-        variant === "secondary" && "border border-line bg-raised text-fg hover:border-fg-3 hover:bg-[#21302a]",
-        variant === "ghost" && "text-fg-2 hover:bg-raised hover:text-fg",
-        variant === "danger" && "border border-coral/40 bg-coral-soft text-coral hover:border-coral/70",
+        size === "sm" ? "h-7 px-3 text-[12.5px]" : "h-9 px-4 text-[13px]",
+        variant === "primary" && "bg-green text-white shadow-[inset_0_1px_0_rgb(255_255_255/0.12)] hover:bg-green-hover",
+        variant === "dark" && "bg-ink text-white hover:bg-ink-2",
+        variant === "secondary" && "bg-raised text-fg shadow-ring hover:bg-bg-2",
+        variant === "ghost" && "text-fg-2 hover:bg-fg/[0.06] hover:text-fg",
+        variant === "danger" && "bg-raised text-coral shadow-[0_0_0_1px_color-mix(in_srgb,var(--color-coral)_35%,transparent)] hover:bg-coral-soft",
         className,
       )}
     >
@@ -53,12 +54,12 @@ export function StatusPill({ tone, children, pulse, title }: { tone: Tone; child
     <span
       title={title}
       className={cn(
-        "inline-flex h-6 items-center gap-1.5 rounded-sm border px-2 text-xs font-semibold whitespace-nowrap",
-        tone === "positive" && "border-green/25 bg-green-soft",
-        tone === "warning" && "border-amber/25 bg-amber-soft",
-        tone === "critical" && "border-coral/25 bg-coral-soft",
-        tone === "info" && "border-cyan/20 bg-cyan-soft",
-        (tone === "neutral" || tone === "progress") && "border-line bg-raised",
+        "inline-flex h-[22px] items-center gap-1.5 rounded-full px-2 text-[11.5px] font-medium whitespace-nowrap",
+        tone === "positive" && "bg-green-soft",
+        tone === "warning" && "bg-amber-soft",
+        tone === "critical" && "bg-coral-soft",
+        tone === "info" && "bg-cyan-soft",
+        (tone === "neutral" || tone === "progress") && "bg-fg/[0.06]",
         TONE_TEXT[tone],
       )}
     >
@@ -71,7 +72,7 @@ export function StatusPill({ tone, children, pulse, title }: { tone: Tone; child
 /** Marks anything simulated. Used on every virtual device and demo value. */
 export function SimulatedTag({ children = "Simulated" }: { children?: ReactNode }) {
   return (
-    <span className="inline-flex items-center gap-1 rounded-sm border border-line px-1.5 py-0.5 text-2xs font-medium text-fg-3">
+    <span className="inline-flex items-center gap-1 rounded-full bg-fg/[0.05] px-2 py-0.5 text-2xs font-medium text-fg-3">
       <FlaskConical className="size-3" aria-hidden />
       {children}
     </span>
@@ -80,7 +81,8 @@ export function SimulatedTag({ children = "Simulated" }: { children?: ReactNode 
 
 export function TestnetTag() {
   return (
-    <span className="inline-flex items-center gap-1 rounded-sm border border-cyan/25 bg-cyan-soft px-1.5 py-0.5 text-2xs font-medium text-cyan">
+    <span className="inline-flex items-center gap-1.5 rounded-full bg-cyan-soft px-2 py-0.5 text-2xs font-medium text-cyan">
+      <span aria-hidden className="size-1.5 rounded-full bg-cyan" />
       Stellar testnet
     </span>
   );
@@ -104,27 +106,28 @@ export function Panel({
   as?: "section" | "div" | "article";
 }) {
   return (
-    <Tag {...rest} className={cn("rounded-lg border border-line bg-surface", className)}>
+    <Tag {...rest} className={cn("rounded-lg bg-surface shadow-ring", className)}>
       {(title || actions) && (
-        <header className="flex items-start justify-between gap-4 border-b border-line-soft px-5 py-3.5">
+        <header className="flex items-start justify-between gap-4 border-b border-line-soft px-4 py-3">
           <div className="min-w-0">
-            {title && <h2 className="text-sm font-semibold text-fg">{title}</h2>}
-            {description && <p className="mt-0.5 text-[13px] text-fg-3">{description}</p>}
+            {title && <h2 className="text-[13.5px] font-semibold tracking-[-0.005em] text-fg">{title}</h2>}
+            {description && <p className="mt-0.5 text-[12.5px] text-fg-3">{description}</p>}
           </div>
           {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
         </header>
       )}
-      <div className={cn("p-5", bodyClassName)}>{children}</div>
+      <div className={cn("p-4", bodyClassName)}>{children}</div>
     </Tag>
   );
 }
 
-export function PageHeader({ title, description, actions }: { title: string; description?: ReactNode; actions?: ReactNode }) {
+export function PageHeader({ eyebrow, title, description, actions }: { eyebrow?: ReactNode; title: string; description?: ReactNode; actions?: ReactNode }) {
   return (
-    <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
+    <div className="mb-7 flex flex-wrap items-end justify-between gap-4">
       <div>
-        <h1 className="text-xl font-bold tracking-[-0.01em] text-fg">{title}</h1>
-        {description && <p className="mt-1 max-w-2xl text-[13px] text-fg-2">{description}</p>}
+        {eyebrow && <p className="label mb-2">{eyebrow}</p>}
+        <h1 className="text-[22px] leading-7 font-semibold tracking-[-0.025em] text-fg">{title}</h1>
+        {description && <p className="mt-1.5 max-w-2xl text-[13px] text-fg-2">{description}</p>}
       </div>
       {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
     </div>
@@ -154,8 +157,47 @@ export function EmptyState({ icon, title, children, action }: { icon?: ReactNode
 export function Meter({ value, tone, label }: { value: number; tone: Tone; label: string }) {
   const pct = Math.max(0, Math.min(100, value * 100));
   return (
-    <div role="meter" aria-label={label} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(pct)} className="h-1.5 w-full overflow-hidden rounded-full bg-line-soft">
+    <div role="meter" aria-label={label} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(pct)} className="h-1.5 w-full overflow-hidden rounded-full bg-fg/[0.07]">
       <div className={cn("h-full rounded-full transition-[width] duration-700", TONE_BG[tone])} style={{ width: `${pct}%` }} />
     </div>
+  );
+}
+
+// ── Recur-style structure ───────────────────────────────────────────────────
+/** Mono, uppercase, wide-tracked section label. Organises a page without shouting. */
+export function SectionLabel({ children, className, as: Tag = "h2", aside }: { children: ReactNode; className?: string; as?: "h2" | "h3" | "p"; aside?: ReactNode }) {
+  return (
+    <div className={cn("mb-2.5 flex min-h-6 items-center justify-between gap-3", className)}>
+      <Tag className="label">{children}</Tag>
+      {aside}
+    </div>
+  );
+}
+
+/** One strip of headline figures with hairline separators (a single `dl`). */
+export function KpiStrip({ items, className }: { items: { label: ReactNode; value: ReactNode; hint?: ReactNode; tone?: Tone }[]; className?: string }) {
+  return (
+    <dl
+      className={cn("grid overflow-hidden rounded-lg bg-surface shadow-ring", className)}
+      style={{ gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 190px), 1fr))" }}
+    >
+      {items.map((it, i) => (
+        <div key={i} className="px-4 py-3.5 shadow-[-1px_-1px_0_0_rgb(12_13_12/0.07)]">
+          <dt className="text-[11.5px] text-fg-3">{it.label}</dt>
+          <dd className={cn("mt-1 text-[22px] leading-7 font-semibold tracking-[-0.03em] tabular", it.tone ? TONE_TEXT[it.tone] : "text-fg")}>{it.value}</dd>
+          {it.hint && <dd className="mt-0.5 text-[11.5px] text-fg-3">{it.hint}</dd>}
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+/** Quiet "live" chip with a dot, shown only for genuinely live states. */
+export function LiveChip({ children, live = true, tone = "positive" }: { children: ReactNode; live?: boolean; tone?: Tone }) {
+  return (
+    <span className="inline-flex items-center gap-1.5 rounded-full bg-bg-2 px-2.5 py-1 text-[11.5px] font-medium text-fg-2">
+      <Dot tone={live ? tone : "neutral"} pulse={live} />
+      {children}
+    </span>
   );
 }

@@ -93,7 +93,7 @@ Each scenario only sets the starting state. Outcomes come from the real agent, p
 
 **Suggested five-minute walkthrough (default scenario):**
 
-1. **Overview.** The service runway shows each utility on one axis: data runs out in ~6 h, electricity in ~1 day, airtime is fine.
+1. **Landing (`/`), then Overview (`/overview`).** The service runway shows each utility on one axis: data runs out in ~6 h, electricity in ~1 day, airtime is fine.
 2. **Agent → Start run.** Watch the stage stepper and timeline: observe → forecast (with confidence) → discover providers → compare → quote → proposal → spending rules → **HTTP 402** (amount, asset, network, payee) → signing → settling → verifying → household updated → reassess. Expand any step for the exact data.
 3. Open a purchase. *Payment confirmed* (Stellar testnet) and *Utility released* (simulated) are separate records; follow the transaction hash to Stellar Expert.
 4. **Household** shows the credited meter and phone; **Accounts** shows each account's providers, availability and registered payee wallets; **Transactions** is searchable.
@@ -250,7 +250,7 @@ One Next.js 16 application with hard internal module boundaries. Providers are s
 
 ```
 src/
-├── app/                       Overview, Agent (+ runs/[id]), Household, Accounts, Providers, Transactions, Settings
+├── app/                       Landing (/), Overview (/overview), Agent (+ runs/[id]), Household, Accounts, Providers, Transactions, Settings
 │   └── api/
 │       ├── providers/                registry listing; [providerId]/ service document, quote, x402 purchase, retry
 │       ├── services/[providerId]/    x402-protected information services (meter diagnostic)
@@ -272,7 +272,7 @@ scripts/  tests/  tests/e2e/  drizzle/  docs/
 
 **Data model** ([`schema.ts`](src/server/db/schema.ts)) adds to the original household tables: `agent_runs`, `agent_run_events` (append-only, ordered), `provider_quotes`, `funding_guards`, `meter_profiles` (provider-side ground truth), and on `purchases` the service type, run, quote binding, approval deadline and approval terms/hash. Purchases keep three separate status fields: lifecycle `stage`, `payment_status`, `fulfilment_status`.
 
-Design notes: [`docs/amendment-a0-procurement-architecture.md`](docs/amendment-a0-procurement-architecture.md) (procurement amendment), [`docs/upgrade-m0-assessment.md`](docs/upgrade-m0-assessment.md) (engineering assessment and plan) and [`docs/milestone-0-architecture.md`](docs/milestone-0-architecture.md) (original).
+Design notes: [`docs/design-refinement-plan.md`](docs/design-refinement-plan.md) (visual design system), [`docs/amendment-a0-procurement-architecture.md`](docs/amendment-a0-procurement-architecture.md) (procurement amendment), [`docs/upgrade-m0-assessment.md`](docs/upgrade-m0-assessment.md) (engineering assessment and plan) and [`docs/milestone-0-architecture.md`](docs/milestone-0-architecture.md) (original).
 
 ---
 

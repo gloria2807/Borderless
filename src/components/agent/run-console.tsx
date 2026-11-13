@@ -3,8 +3,8 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Check, ChevronRight, CircleAlert, ExternalLink, Radio, ShieldCheck, TimerOff } from "lucide-react";
-import { Button, cn, Spinner, StatusPill, TestnetTag } from "@/components/ui/primitives";
+import { Check, ChevronRight, CircleAlert, ExternalLink, ShieldCheck, TimerOff } from "lucide-react";
+import { Button, cn, LiveChip, Spinner, StatusPill, TestnetTag } from "@/components/ui/primitives";
 import { useApiAction } from "@/components/ui/interactive";
 import { atomicToDecimal, naira, shortAddress, shortHash, UTILITY_NAMES } from "@/lib/format";
 import { FULFILMENT_STATUS, PAYMENT_STATUS, STAGE, type Tone } from "@/lib/status";
@@ -36,23 +36,23 @@ const STAGE_LABEL = Object.fromEntries(STAGES.map((s) => [s.key, s.label]));
 
 /** The brief's sections: every event belongs to one, shown as a coloured label. */
 const PHASE: Record<string, { label: string; cls: string }> = {
-  planning: { label: "Plan", cls: "text-fg-2 border-line" },
-  observing: { label: "Observe", cls: "text-cyan border-cyan/25" },
-  analysing: { label: "Forecast", cls: "text-cyan border-cyan/25" },
-  identifying_need: { label: "Need", cls: "text-amber border-amber/25" },
-  discovering: { label: "Discovery", cls: "text-fg-2 border-line" },
-  comparing: { label: "Evaluate", cls: "text-fg-2 border-line" },
-  deciding: { label: "Decision", cls: "text-green border-green/30" },
-  checking_policy: { label: "Authorise", cls: "text-amber border-amber/25" },
-  awaiting_approval: { label: "Approval", cls: "text-amber border-amber/25" },
-  requesting_payment: { label: "Payment", cls: "text-cyan border-cyan/25" },
-  signing: { label: "Payment", cls: "text-cyan border-cyan/25" },
-  settling: { label: "Payment", cls: "text-cyan border-cyan/25" },
-  verifying_fulfilment: { label: "Fulfilment", cls: "text-green border-green/30" },
-  updating_household: { label: "Fulfilment", cls: "text-green border-green/30" },
-  using_result: { label: "Using result", cls: "text-green border-green/30" },
-  reassessing: { label: "Reassess", cls: "text-fg-2 border-line" },
-  finished: { label: "Result", cls: "text-fg-2 border-line" },
+  planning: { label: "Plan", cls: "text-fg-2 bg-fg/[0.06]" },
+  observing: { label: "Observe", cls: "text-cyan bg-cyan-soft" },
+  analysing: { label: "Forecast", cls: "text-cyan bg-cyan-soft" },
+  identifying_need: { label: "Need", cls: "text-amber bg-amber-soft" },
+  discovering: { label: "Discovery", cls: "text-fg-2 bg-fg/[0.06]" },
+  comparing: { label: "Evaluate", cls: "text-fg-2 bg-fg/[0.06]" },
+  deciding: { label: "Decision", cls: "text-green bg-green-soft" },
+  checking_policy: { label: "Authorise", cls: "text-amber bg-amber-soft" },
+  awaiting_approval: { label: "Approval", cls: "text-amber bg-amber-soft" },
+  requesting_payment: { label: "Payment", cls: "text-cyan bg-cyan-soft" },
+  signing: { label: "Payment", cls: "text-cyan bg-cyan-soft" },
+  settling: { label: "Payment", cls: "text-cyan bg-cyan-soft" },
+  verifying_fulfilment: { label: "Fulfilment", cls: "text-green bg-green-soft" },
+  updating_household: { label: "Fulfilment", cls: "text-green bg-green-soft" },
+  using_result: { label: "Using result", cls: "text-green bg-green-soft" },
+  reassessing: { label: "Reassess", cls: "text-fg-2 bg-fg/[0.06]" },
+  finished: { label: "Result", cls: "text-fg-2 bg-fg/[0.06]" },
 };
 
 const TOOL_LABEL: Record<string, string> = {
@@ -156,7 +156,7 @@ function Raw({ label, value }: { label: string; value: unknown }) {
   return (
     <div>
       <p className="mb-1 font-medium text-fg-2">{label}</p>
-      <pre tabIndex={0} aria-label={label} className="mono max-h-72 focus-visible:outline-2 focus-visible:outline-green overflow-auto rounded-sm bg-bg p-2 text-[11px] leading-relaxed whitespace-pre-wrap text-fg-2">{JSON.stringify(value, null, 2)}</pre>
+      <pre tabIndex={0} aria-label={label} className="mono max-h-72 overflow-auto rounded-md bg-raised p-2.5 text-[11px] leading-relaxed whitespace-pre-wrap text-fg-2 shadow-ring focus-visible:outline-2 focus-visible:outline-green">{JSON.stringify(value, null, 2)}</pre>
     </div>
   );
 }
@@ -287,26 +287,44 @@ function StageStepper({ events, running }: { events: RunEventDTO[]; running: boo
   const reached = new Set<string>(events.filter((e) => !(e.type.startsWith("tool.") && e.stage === "requesting_payment")).map((e) => e.stage));
   const current = running ? events.at(-1)?.stage : undefined;
   return (
-    <ol className="flex flex-wrap gap-1.5" aria-label="Run stages">
-      {STAGES.map((s) => {
+    <ol className="relative" aria-label="Run stages">
+      {STAGES.map((s, i) => {
         const state = s.key === current ? "current" : reached.has(s.key) ? "done" : running ? "pending" : "skipped";
+        const last = i === STAGES.length - 1;
         return (
           <li
             key={s.key}
             aria-current={state === "current" ? "step" : undefined}
-            className={cn(
-              "inline-flex h-7 items-center gap-1 rounded-sm border px-2 text-2xs font-semibold",
-              state === "done" && "border-green/30 bg-green-soft text-green",
-              state === "current" && "border-cyan/40 bg-cyan/10 text-cyan",
-              state === "pending" && "border-line text-fg-3",
-              state === "skipped" && "border-dashed border-line text-fg-3",
-            )}
+            className="relative grid grid-cols-[18px_minmax(0,1fr)] items-center gap-2.5 py-[5px]"
             title={state === "skipped" ? "Not needed in this run" : undefined}
           >
-            {state === "done" && <Check className="size-3" aria-hidden />}
-            {state === "current" && <Spinner className="size-3" />}
-            {s.label}
-            <span className="sr-only">{` (${state})`}</span>
+            {!last && <span aria-hidden className={cn("absolute top-[19px] left-[8.5px] h-[calc(100%-8px)] w-px", state === "done" ? "bg-green/40" : "bg-fg/[0.08]")} />}
+            <span
+              aria-hidden
+              className={cn(
+                "relative z-10 flex size-[18px] items-center justify-center rounded-full",
+                state === "done" && "bg-green text-white",
+                state === "current" && "bg-surface text-cyan shadow-[0_0_0_1.5px_var(--color-cyan)]",
+                state === "pending" && "bg-surface shadow-[inset_0_0_0_1.5px_rgb(12_13_12/0.14)]",
+                state === "skipped" && "bg-transparent",
+              )}
+            >
+              {state === "done" && <Check className="size-[11px]" strokeWidth={3} />}
+              {state === "current" && <span className="size-1.5 animate-pulse-dot rounded-full bg-cyan" />}
+              {state === "skipped" && <span className="size-1 rounded-full bg-fg/20" />}
+            </span>
+            <span
+              className={cn(
+                "text-[12.5px]",
+                state === "done" && "text-fg",
+                state === "current" && "font-semibold text-cyan",
+                state === "pending" && "text-fg-3",
+                state === "skipped" && "text-fg-3 line-through decoration-fg/20",
+              )}
+            >
+              {s.label}
+              <span className="sr-only">{` (${state === "skipped" ? "not needed in this run" : state})`}</span>
+            </span>
           </li>
         );
       })}
@@ -327,7 +345,7 @@ function useCountdown(deadline: string | null): number | null {
 /** The exact payment the owner is approving, and the fingerprint of those terms. */
 export function ApprovalTermsLine({ t, hash }: { t: { amountAtomic: string; payTo: string; recipient: string }; hash: string | null }) {
   return (
-    <p className="mt-1 text-2xs text-fg-3">
+    <p className="mt-1.5 text-[11.5px] leading-relaxed text-fg-3">
       Pays exactly <span className="mono text-fg-2">{atomicToDecimal(t.amountAtomic)} test USDC</span> to <span className="mono text-fg-2" title={t.payTo}>{shortAddress(t.payTo)}</span> for{" "}
       <span className="mono text-fg-2">{t.recipient}</span>
       {hash && (
@@ -354,16 +372,20 @@ export function ApprovalCard({ p }: { p: RunPurchaseView }) {
   }, [expired, router]);
   const mmss = left === null ? null : `${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")}`;
   return (
-    <section aria-label="Approval request" className={cn("rounded-lg border px-4 py-3", expired ? "border-line bg-bg-2" : "border-amber/30 bg-amber-soft")}>
+    <section aria-label="Approval request" className="relative overflow-hidden rounded-lg bg-surface py-3.5 pr-4 pl-5 shadow-ring">
+      <span aria-hidden className={cn("absolute inset-y-0 left-0 w-[3px]", expired ? "bg-fg/15" : "bg-amber")} />
       <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
-        {expired ? <TimerOff className="size-5 shrink-0 text-fg-3" aria-hidden /> : <ShieldCheck className="size-5 shrink-0 text-amber" aria-hidden />}
+        <span className={cn("flex size-8 shrink-0 items-center justify-center rounded-full", expired ? "bg-fg/[0.06]" : "bg-amber-soft")}>
+          {expired ? <TimerOff className="size-4 text-fg-3" aria-hidden /> : <ShieldCheck className="size-4 text-amber" aria-hidden />}
+        </span>
         <div className="min-w-0 flex-1">
-          <p className="text-[13px] font-semibold text-fg">
+          <p className={cn("label mb-1", !expired && "text-amber")}>{expired ? "Approval expired" : "Approval requested"}</p>
+          <p className="text-[13.5px] font-semibold text-fg">
             Approve {p.label} from {p.providerName}
             {p.label.includes("₦") ? null : <> for <span className="mono">{naira(p.amountNgn)}</span></>}?
           </p>
-          <p className="text-[13px] text-fg-2" aria-live="polite">
-            {expired ? "This request expired. Nothing was paid." : <>It&apos;s above your approval threshold. Nothing is paid unless you approve. Expires in <span className="mono">{mmss}</span>.</>}
+          <p className="text-[12.5px] text-fg-2" aria-live="polite">
+            {expired ? "This request expired. Nothing was paid." : <>It&apos;s above your approval threshold. Nothing is paid unless you approve. Expires in <span className="mono rounded bg-amber-soft px-1 text-amber">{mmss}</span>.</>}
           </p>
           {p.approvalTerms && !expired && <ApprovalTermsLine t={p.approvalTerms} hash={p.approvalTermsHash} />}
         </div>
@@ -397,15 +419,15 @@ function PurchaseRow({ p, explorer }: { p: RunPurchaseView; explorer: string }) 
   const pay = PAYMENT_STATUS[p.paymentStatus];
   const ful = FULFILMENT_STATUS[p.fulfilmentStatus];
   return (
-    <li className="flex flex-wrap items-center gap-2 rounded-md border border-line-soft bg-bg-2 px-3 py-2 text-[13px]">
-      <Link href={`/transactions/${p.id}`} className="font-semibold hover:underline">
+    <li className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5 rounded-lg bg-surface px-3.5 py-2.5 text-[13px] shadow-ring">
+      <Link href={`/transactions/${p.id}`} className="font-medium hover:underline">
         {p.label}
       </Link>
-      <Link href={`/transactions/${p.id}#procurement`} className="text-2xs text-cyan hover:underline">
+      <Link href={`/transactions/${p.id}#procurement`} className="text-[11.5px] font-medium text-cyan hover:underline">
         Inspect procurement
       </Link>
       <span className="text-fg-3">{p.providerName}</span>
-      <span className="mono text-fg-2">{naira(p.amountNgn)}</span>
+      <span className="text-fg-2 tabular">{naira(p.amountNgn)}</span>
       {p.txHash && (
         <a href={`${explorer}/${p.txHash}`} target="_blank" rel="noreferrer" className="mono inline-flex items-center gap-1 text-2xs text-cyan hover:underline">
           {shortHash(p.txHash, 6)} <ExternalLink className="size-3" aria-hidden />
@@ -481,108 +503,115 @@ export function RunConsole({ view }: { view: RunView }) {
   const r = view.run;
 
   return (
-    <div className="space-y-6">
-      <section className="rounded-lg border border-line bg-surface p-5">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="min-w-0">
-            <p className="text-2xs font-semibold tracking-wide text-fg-3 uppercase">Task</p>
-            <p className="mt-1 text-[15px] text-fg">{r.task}</p>
-            <p className="mt-2 text-2xs text-fg-3">
-              {r.mode === "ai" ? `AI agent · ${r.model}` : "Deterministic planner (no AI)"} · started {time(r.startedAt)}
-              {r.endedAt ? ` · ended ${time(r.endedAt)}` : ""} · {events.length} events
-              {r.usage?.prompt_tokens ? ` · ${r.usage.prompt_tokens.toLocaleString()} / ${r.usage.completion_tokens?.toLocaleString()} tokens` : ""}
-            </p>
+    <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_300px]">
+      <div className="min-w-0 space-y-5">
+        <section className="rounded-lg bg-surface p-4 shadow-ring">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="label">Task</p>
+              <p className="mt-1.5 text-[15px] leading-snug tracking-[-0.01em] text-fg">{r.task}</p>
+              <p className="mono mt-2 text-[10.5px] text-fg-3">
+                {r.mode === "ai" ? `AI agent · ${r.model}` : "Deterministic planner (no AI)"} · started {time(r.startedAt)}
+                {r.endedAt ? ` · ended ${time(r.endedAt)}` : ""} · {events.length} events
+                {r.usage?.prompt_tokens ? ` · ${r.usage.prompt_tokens.toLocaleString()} / ${r.usage.completion_tokens?.toLocaleString()} tokens` : ""}
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              {running && (
+                <span aria-live="polite">
+                  <LiveChip live={live} tone="info">{live ? "Live" : "Connecting…"}</LiveChip>
+                </span>
+              )}
+              <StatusPill tone={st.tone} pulse={running}>
+                {st.label}
+              </StatusPill>
+              <TestnetTag />
+            </div>
           </div>
-          <div className="flex items-center gap-2">
-            {running && (
-              <span className={cn("inline-flex items-center gap-1 text-2xs font-semibold", live ? "text-cyan" : "text-fg-3")} aria-live="polite">
-                <Radio className="size-3.5" aria-hidden /> {live ? "Live" : "Connecting…"}
-              </span>
-            )}
-            <StatusPill tone={st.tone} pulse={running}>
-              {st.label}
-            </StatusPill>
-            <TestnetTag />
-          </div>
-        </div>
-        <div className="mt-4">
-          <StageStepper events={events} running={running} />
-        </div>
-        {!running && r.summary && (
-          <div className={cn("mt-4 rounded-md border p-3 text-[13px]", status === "completed" ? "border-line-soft bg-bg-2 text-fg" : "border-coral/30 bg-coral-soft text-fg")}>
-            {status !== "completed" && <CircleAlert className="mr-1.5 inline size-4 text-coral" aria-hidden />}
-            {r.summary}
-          </div>
-        )}
-      </section>
-
-      {awaiting.map((p) => (
-        <ApprovalCard key={p.id} p={p} />
-      ))}
-
-      {view.purchases.length > 0 && (
-        <section aria-labelledby="run-purchases">
-          <h2 id="run-purchases" className="mb-2 text-sm font-semibold text-fg-2">
-            Purchases in this run
-          </h2>
-          <ul className="space-y-2">
-            {view.purchases.map((p) => (
-              <PurchaseRow key={p.id} p={p} explorer={view.explorerTxBase} />
-            ))}
-          </ul>
-        </section>
-      )}
-
-      <section aria-labelledby="run-timeline" className="rounded-lg border border-line bg-surface">
-        <header className="flex items-center justify-between border-b border-line-soft px-5 py-3">
-          <h2 id="run-timeline" className="text-sm font-semibold">
-            Execution timeline
-          </h2>
-          <p className="text-2xs text-fg-3">Every entry is a persisted backend event · times in WAT</p>
-        </header>
-        <ol className="divide-y divide-line-soft" aria-live="polite" aria-relevant="additions">
-          {items.map((it) => {
-            const phase = PHASE[it.stage] ?? PHASE.planning!;
-            return (
-              <li key={it.key} className="px-5 py-3" data-stage={it.stage}>
-                <div className="grid grid-cols-[64px_84px_minmax(0,1fr)] items-baseline gap-3 max-sm:grid-cols-[84px_minmax(0,1fr)]">
-                  <span className="mono text-2xs text-fg-3 max-sm:hidden">{time(it.at)}</span>
-                  <span className={cn("justify-self-start rounded-sm border px-1.5 py-px text-2xs font-semibold", phase.cls)} title={STAGE_LABEL[it.stage]}>
-                    {phase.label}
-                  </span>
-                  <div className="min-w-0">
-                    <p className={cn("flex items-center gap-1.5 text-[13px] font-semibold", it.tone === "critical" ? "text-coral" : it.tone === "warning" ? "text-amber" : "text-fg")}>
-                      {it.pending && <Spinner className="size-3" />}
-                      {it.title}
-                    </p>
-                    {it.body && <p className="mt-0.5 text-[13px] leading-relaxed break-words text-fg-2">{it.body}</p>}
-                    {it.txHash && (
-                      <a href={`${view.explorerTxBase}/${it.txHash}`} target="_blank" rel="noreferrer" className="mono mt-1 inline-flex items-center gap-1 text-2xs text-cyan hover:underline">
-                        Stellar tx {shortHash(it.txHash, 8)} <ExternalLink className="size-3" aria-hidden />
-                        <span className="sr-only">(opens Stellar Expert)</span>
-                      </a>
-                    )}
-                    {it.details && (
-                      <details className="group mt-1.5">
-                        <summary className="inline-flex cursor-pointer list-none items-center gap-1 text-2xs font-medium text-fg-3 hover:text-fg">
-                          <ChevronRight className="size-3 transition-transform group-open:rotate-90" aria-hidden />
-                          Details
-                        </summary>
-                        <div className="mt-2 w-0 min-w-full space-y-2 rounded-md border border-line-soft bg-bg-2 p-3 text-2xs">{it.details}</div>
-                      </details>
-                    )}
-                  </div>
-                </div>
-              </li>
-            );
-          })}
-          {running && (
-            <li className="flex items-center gap-2 px-5 py-3 text-[13px] text-fg-3">
-              <Spinner className="size-3.5" /> Waiting for the next step…
-            </li>
+          {!running && r.summary && (
+            <div className={cn("mt-4 flex gap-2 rounded-lg p-3 text-[13px] leading-relaxed", status === "completed" ? "bg-green-soft/60 text-fg" : "bg-coral-soft text-fg")}>
+              {status === "completed" ? <Check className="mt-0.5 size-4 shrink-0 text-green" aria-hidden /> : <CircleAlert className="mt-0.5 size-4 shrink-0 text-coral" aria-hidden />}
+              <span>{r.summary}</span>
+            </div>
           )}
-        </ol>
-      </section>
+        </section>
+
+        {awaiting.map((p) => (
+          <ApprovalCard key={p.id} p={p} />
+        ))}
+
+        {view.purchases.length > 0 && (
+          <section aria-labelledby="run-purchases">
+            <h2 id="run-purchases" className="label mb-2.5">
+              Purchases in this run
+            </h2>
+            <ul className="space-y-2">
+              {view.purchases.map((p) => (
+                <PurchaseRow key={p.id} p={p} explorer={view.explorerTxBase} />
+              ))}
+            </ul>
+          </section>
+        )}
+
+        <section aria-labelledby="run-timeline" className="rounded-lg bg-surface shadow-ring">
+          <header className="flex flex-wrap items-center justify-between gap-2 border-b border-line-soft px-4 py-3">
+            <h2 id="run-timeline" className="text-[13.5px] font-semibold">
+              Execution timeline
+            </h2>
+            <p className="mono text-[10.5px] text-fg-3">Persisted backend events · WAT</p>
+          </header>
+          <ol className="divide-y divide-line-soft" aria-live="polite" aria-relevant="additions">
+            {items.map((it) => {
+              const phase = PHASE[it.stage] ?? PHASE.planning!;
+              return (
+                <li key={it.key} className="animate-fade-in px-4 py-3" data-stage={it.stage}>
+                  <div className="grid grid-cols-[60px_88px_minmax(0,1fr)] items-baseline gap-3 max-sm:grid-cols-[88px_minmax(0,1fr)]">
+                    <span className="mono text-[10.5px] text-fg-3 max-sm:hidden">{time(it.at)}</span>
+                    <span className={cn("justify-self-start rounded-full px-2 py-px text-[10.5px] font-medium", phase.cls)} title={STAGE_LABEL[it.stage]}>
+                      {phase.label}
+                    </span>
+                    <div className="min-w-0">
+                      <p className={cn("flex items-center gap-1.5 text-[13px] font-medium", it.tone === "critical" ? "text-coral" : it.tone === "warning" ? "text-amber" : "text-fg")}>
+                        {it.pending && <Spinner className="size-3" />}
+                        {it.title}
+                      </p>
+                      {it.body && <p className="mt-0.5 text-[12.5px] leading-relaxed break-words text-fg-2">{it.body}</p>}
+                      {it.txHash && (
+                        <a href={`${view.explorerTxBase}/${it.txHash}`} target="_blank" rel="noreferrer" className="mono mt-1 inline-flex items-center gap-1 text-[11px] text-cyan hover:underline">
+                          Stellar tx {shortHash(it.txHash, 8)} <ExternalLink className="size-3" aria-hidden />
+                          <span className="sr-only">(opens Stellar Expert)</span>
+                        </a>
+                      )}
+                      {it.details && (
+                        <details className="group mt-1.5">
+                          <summary className="inline-flex cursor-pointer list-none items-center gap-1 text-[11.5px] font-medium text-fg-3 hover:text-fg">
+                            <ChevronRight className="size-3 transition-transform group-open:rotate-90" aria-hidden />
+                            Details
+                          </summary>
+                          <div className="mt-2 w-0 min-w-full space-y-2 rounded-lg bg-bg p-3 text-[11.5px] shadow-[inset_0_0_0_1px_rgb(12_13_12/0.06)]">{it.details}</div>
+                        </details>
+                      )}
+                    </div>
+                  </div>
+                </li>
+              );
+            })}
+            {running && (
+              <li className="flex items-center gap-2 px-4 py-3 text-[12.5px] text-fg-3">
+                <Spinner className="size-3.5" /> Waiting for the next recorded step…
+              </li>
+            )}
+          </ol>
+        </section>
+      </div>
+
+      <aside className="rounded-lg bg-surface p-4 shadow-ring xl:sticky xl:top-6" aria-label="Progress">
+        <p className="label mb-3">Stages</p>
+        <StageStepper events={events} running={running} />
+        <p className="mt-3 border-t border-line-soft pt-3 text-[11px] leading-relaxed text-fg-3">
+          A stage lights up only when the server records it. Struck-through stages weren&apos;t needed in this run.
+        </p>
+      </aside>
     </div>
   );
 }

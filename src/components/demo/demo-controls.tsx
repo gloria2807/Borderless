@@ -76,13 +76,14 @@ export function DemoControls({ utilities, providers, faults, scenario, compact }
       <dialog
         ref={ref}
         aria-label="Demo controls"
-        className="fixed inset-y-0 right-0 left-auto m-0 h-dvh max-h-dvh w-[min(400px,100vw)] border-l border-line bg-bg-2 p-0 text-fg backdrop:bg-black/50"
+        className="fixed inset-y-0 right-0 left-auto m-0 h-dvh max-h-dvh w-[min(400px,100vw)] bg-bg p-0 text-fg shadow-pop backdrop:bg-ink/25 backdrop:backdrop-blur-[2px]"
         onClick={(e) => e.target === ref.current && ref.current?.close()}
       >
         <div className="flex h-full flex-col">
           <header className="flex items-start justify-between border-b border-line-soft px-5 py-4">
             <div>
-              <h2 className="text-base font-semibold">Demo controls</h2>
+              <p className="label mb-1">Operator</p>
+              <h2 className="text-[15px] font-semibold tracking-[-0.01em]">Demo controls</h2>
               <p className="mt-0.5 text-[13px] text-fg-3">Operate the simulated household. Payments remain real testnet transactions.</p>
             </div>
             <button className="text-fg-3 hover:text-fg" aria-label="Close" onClick={() => ref.current?.close()}>
@@ -99,11 +100,11 @@ export function DemoControls({ utilities, providers, faults, scenario, compact }
                   <label
                     key={o.id}
                     className={cn(
-                      "flex cursor-pointer gap-2.5 rounded-md border px-3 py-2 has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-green",
-                      picked === o.id ? "border-green/40 bg-green-soft" : "border-line-soft hover:border-line",
+                      "flex cursor-pointer gap-2.5 rounded-lg px-3 py-2 transition-colors has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-green",
+                      picked === o.id ? "bg-surface shadow-[0_0_0_1.5px_var(--color-green)]" : "bg-surface shadow-ring hover:bg-raised",
                     )}
                   >
-                    <input type="radio" name={groupName} value={o.id} checked={picked === o.id} onChange={() => setPicked(o.id)} className="mt-1 accent-[#b8df76]" />
+                    <input type="radio" name={groupName} value={o.id} checked={picked === o.id} onChange={() => setPicked(o.id)} className="mt-1 accent-green" />
                     <span className="min-w-0">
                       <span className="block text-[13px] font-medium text-fg">
                         {o.name}
@@ -158,7 +159,7 @@ export function DemoControls({ utilities, providers, faults, scenario, compact }
                 {utilities.map((u) => (
                   <div key={u.kind} className="flex items-center justify-between gap-3">
                     <span className="text-[13px] text-fg-2">{UTILITY_NAMES[u.kind]}</span>
-                    <div role="radiogroup" aria-label={`${UTILITY_NAMES[u.kind]} usage speed`} className="flex rounded-md border border-line p-0.5">
+                    <div role="radiogroup" aria-label={`${UTILITY_NAMES[u.kind]} usage speed`} className="flex rounded-full bg-fg/[0.06] p-0.5">
                       {SPEEDS.map((sp) => (
                         <button
                           key={sp}
@@ -166,7 +167,7 @@ export function DemoControls({ utilities, providers, faults, scenario, compact }
                           aria-checked={u.multiplier === sp}
                           disabled={pending}
                           onClick={() => run("/api/simulation/usage", { body: { kind: u.kind, multiplier: sp } })}
-                          className={cn("mono h-6 rounded-sm px-2 text-2xs", u.multiplier === sp ? "bg-raised text-fg" : "text-fg-3 hover:text-fg")}
+                          className={cn("mono h-6 rounded-full px-2 text-2xs transition-colors", u.multiplier === sp ? "bg-raised text-fg shadow-ring" : "text-fg-3 hover:text-fg")}
                         >
                           {sp}×
                         </button>

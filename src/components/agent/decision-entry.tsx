@@ -6,11 +6,11 @@ import type { DecisionView } from "@/server/views/household";
 
 /** Line kinds are labelled in words, so facts, observations and predictions are never confused. */
 const KIND_STYLE: Record<string, { label: string; cls: string }> = {
-  fact: { label: "Fact", cls: "text-fg-2 border-line" },
-  observation: { label: "Observed", cls: "text-cyan border-cyan/25" },
-  prediction: { label: "Predicted", cls: "text-amber border-amber/25" },
-  decision: { label: "Decision", cls: "text-green border-green/30" },
-  constraint: { label: "Held back", cls: "text-coral border-coral/30" },
+  fact: { label: "Fact", cls: "text-fg-2 bg-fg/[0.06]" },
+  observation: { label: "Observed", cls: "text-cyan bg-cyan-soft" },
+  prediction: { label: "Predicted", cls: "text-amber bg-amber-soft" },
+  decision: { label: "Decision", cls: "text-green bg-green-soft" },
+  constraint: { label: "Held back", cls: "text-coral bg-coral-soft" },
 };
 
 const OUTCOME: Record<string, { label: string; tone: "positive" | "warning" | "critical" | "neutral" | "info" }> = {
@@ -28,10 +28,10 @@ function OptionsConsidered({ options }: { options: DecisionView["options"] }) {
   return (
     <div className="mt-4 space-y-2">
       {options.map((o) => (
-        <details key={o.kind} className="group rounded-md border border-line-soft bg-bg-2">
+        <details key={o.kind} className="group overflow-hidden rounded-lg bg-bg shadow-[inset_0_0_0_1px_rgb(12_13_12/0.07)]">
           <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-2 text-[13px] text-fg-2 hover:text-fg">
             <span>
-              <span className="font-semibold text-fg">{UTILITY_NAMES[o.kind]}</span>: {o.considered.length} options considered
+              <span className="font-medium text-fg">{UTILITY_NAMES[o.kind]}</span>: {o.considered.length} options considered
               {o.impact && (
                 <span className="text-fg-3">
                   {" "}· service {hours(o.impact.hoursBefore)} → {hours(o.impact.hoursAfter)}
@@ -44,7 +44,7 @@ function OptionsConsidered({ options }: { options: DecisionView["options"] }) {
           {/* w-0 min-w-full: the table scrolls inside the card instead of widening the page. */}
           <div className="w-0 min-w-full overflow-x-auto border-t border-line-soft">
             <table className="w-full min-w-[560px] text-left text-2xs">
-              <thead className="text-fg-3">
+              <thead className="mono text-[10px] tracking-[0.08em] text-fg-3 uppercase">
                 <tr>
                   <th scope="col" className="px-3 py-1.5 font-medium">Provider</th>
                   <th scope="col" className="px-3 py-1.5 font-medium">Option</th>
@@ -56,7 +56,7 @@ function OptionsConsidered({ options }: { options: DecisionView["options"] }) {
               </thead>
               <tbody className="divide-y divide-line-soft">
                 {o.considered.map((x) => (
-                  <tr key={`${x.providerId}:${x.productCode}`} className={x.status === "chosen" ? "bg-green-soft" : undefined}>
+                  <tr key={`${x.providerId}:${x.productCode}`} className={x.status === "chosen" ? "bg-green-soft/70" : undefined}>
                     <td className="px-3 py-1.5 text-fg-2">{x.providerName}</td>
                     <td className="px-3 py-1.5 text-fg">{x.label}</td>
                     <td className="mono px-3 py-1.5 text-right text-fg-2">{naira(x.amountNgn)}</td>
@@ -83,8 +83,8 @@ export function DecisionEntry({ d, compact = false }: { d: DecisionView; compact
     <article className="animate-fade-in">
       <header className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
         <div className="min-w-0">
-          <h3 className="text-[15px] font-semibold text-fg">{d.headline}</h3>
-          <p className="mt-0.5 text-2xs text-fg-3">
+          <h3 className="text-[15px] font-semibold tracking-[-0.015em] text-fg">{d.headline}</h3>
+          <p className="mt-1 text-[11.5px] text-fg-3">
             Assessed {dayTime(d.simTime)} (household time), {d.trigger === "tick" ? "after simulated usage" : d.trigger === "scenario" ? "demo scenario" : "run on request"}
           </p>
         </div>
@@ -98,7 +98,7 @@ export function DecisionEntry({ d, compact = false }: { d: DecisionView; compact
           const k = KIND_STYLE[l.kind] ?? KIND_STYLE.fact!;
           return (
             <li key={i} className="grid grid-cols-[72px_minmax(0,1fr)] items-baseline gap-3 text-[13px] leading-relaxed">
-              <span className={cn("justify-self-start rounded-sm border px-1.5 py-px text-2xs font-semibold", k.cls)}>{k.label}</span>
+              <span className={cn("justify-self-start rounded-full px-2 py-px text-[10.5px] font-medium", k.cls)}>{k.label}</span>
               <span className={cn(l.kind === "decision" || l.kind === "constraint" ? "text-fg" : "text-fg-2")}>{l.text}</span>
             </li>
           );
@@ -113,9 +113,9 @@ export function DecisionEntry({ d, compact = false }: { d: DecisionView; compact
             const ful = FULFILMENT_STATUS[p.fulfilmentStatus]!;
             return (
               <li key={p.id}>
-                <Link href={`/transactions/${p.id}`} className="flex flex-wrap items-center gap-2 rounded-md border border-line-soft bg-bg-2 px-3 py-2 text-[13px] hover:border-line">
-                  <span className="font-semibold">{UTILITY_NAMES[p.kind]}</span>
-                  <span className="mono text-fg-2">{naira(p.amountNgn)}</span>
+                <Link href={`/transactions/${p.id}`} className="flex flex-wrap items-center gap-2 rounded-lg bg-bg px-3 py-2 text-[13px] shadow-[inset_0_0_0_1px_rgb(12_13_12/0.07)] transition-colors hover:bg-bg-2">
+                  <span className="font-medium">{UTILITY_NAMES[p.kind]}</span>
+                  <span className="text-fg-2 tabular">{naira(p.amountNgn)}</span>
                   <span className="ml-auto flex flex-wrap gap-1.5">
                     {p.stage === "awaiting_approval" || p.stage === "cancelled" ? (
                       <StatusPill tone={stage.tone}>{stage.label}</StatusPill>

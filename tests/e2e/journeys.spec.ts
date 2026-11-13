@@ -9,7 +9,7 @@ test.describe("overview", () => {
   test.beforeEach(async ({ request }) => loadScenario(request, "both-low"));
 
   test("answers the household's questions at a glance", async ({ page }) => {
-    await page.goto("/");
+    await page.goto("/overview");
     await expect(page.getByRole("heading", { level: 1 })).toHaveText(/Mobile data will run out|running low/);
     await expect(page.getByRole("heading", { name: "Service runway" })).toBeVisible();
     for (const name of ["Electricity", "Airtime", "Mobile data"]) {
@@ -20,7 +20,7 @@ test.describe("overview", () => {
   });
 
   test("navigation marks the current page", async ({ page }) => {
-    await page.goto("/");
+    await page.goto("/overview");
     const nav = page.getByRole("navigation", { name: "Main" }).first();
     await nav.getByRole("link", { name: "Transactions" }).click();
     await expect(page).toHaveURL(/\/transactions$/);
@@ -31,7 +31,7 @@ test.describe("overview", () => {
 
 test("Example D: budget exhausted, so nothing is paid", async ({ page, request }) => {
   await loadScenario(request, "budget-exhausted");
-  await page.goto("/");
+  await page.goto("/overview");
   await assess(page);
   await expect(page.getByRole("heading", { name: /Can't buy electricity/ })).toBeVisible();
   await expect(page.getByText(/Increase the budget or change priorities/).first()).toBeVisible();
@@ -51,9 +51,9 @@ test("Example C: unusual data use is flagged, not bought", async ({ page, reques
 
 test("approval: a parked purchase can be declined without paying", async ({ page, request }) => {
   await loadScenario(request, "needs-approval");
-  await page.goto("/");
+  await page.goto("/overview");
   await assess(page);
-  const prompt = page.getByText(/Borderless wants to buy .* electricity for/);
+  const prompt = page.getByText(/^Buy .* electricity for/);
   await expect(prompt).toBeVisible();
   await page.getByRole("button", { name: "Decline" }).click();
   await expect(page.getByText("Purchase declined")).toBeVisible();
@@ -93,7 +93,7 @@ test("settings: invalid limits are explained before saving", async ({ page, requ
 
 test("demo controls: load a scenario from the picker", async ({ page, request }) => {
   await loadScenario(request, "both-low");
-  await page.goto("/");
+  await page.goto("/overview");
   await page.getByRole("button", { name: "Demo controls" }).click();
   const panel = page.getByRole("dialog", { name: "Demo controls" });
   await panel.getByRole("radio", { name: /Budget exhausted/ }).check();

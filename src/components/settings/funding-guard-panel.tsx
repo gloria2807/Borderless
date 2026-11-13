@@ -52,7 +52,7 @@ export function FundingGuardPanel({ status, explorer }: { status: FundingGuardSt
       </div>
       {status.error && <p className="text-2xs text-amber">{status.error}</p>}
 
-      <dl className="divide-y divide-line-soft rounded-md border border-line-soft bg-bg-2 px-3">
+      <dl className="divide-y divide-line-soft rounded-lg bg-bg px-3 shadow-[inset_0_0_0_1px_rgb(12_13_12/0.07)]">
         <KeyValue label="Treasury" mono>
           <span title={status.treasury ?? undefined}>{status.treasury ? shortAddress(status.treasury) : "—"}</span>
         </KeyValue>
@@ -79,13 +79,13 @@ export function FundingGuardPanel({ status, explorer }: { status: FundingGuardSt
           <label htmlFor={amountId} className="text-[13px] font-medium text-fg-2">
             Cap (test USDC)
           </label>
-          <input id={amountId} inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^\d.]/g, ""))} className="mono mt-1.5 block h-9 w-28 rounded-md border border-line bg-bg-2 px-3 text-[13px] text-fg outline-none focus:border-green" />
+          <input id={amountId} inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^\d.]/g, ""))} className="mono mt-1.5 block h-9 w-28 rounded-lg border border-line bg-raised px-3 text-[13px] text-fg outline-none focus:border-green focus:shadow-[0_0_0_3px_color-mix(in_srgb,var(--color-green)_15%,transparent)]" />
         </div>
         <div>
           <label htmlFor={daysId} className="text-[13px] font-medium text-fg-2">
             For (days)
           </label>
-          <input id={daysId} inputMode="numeric" value={days} onChange={(e) => setDays(e.target.value.replace(/[^\d]/g, ""))} className="mono mt-1.5 block h-9 w-20 rounded-md border border-line bg-bg-2 px-3 text-[13px] text-fg outline-none focus:border-green" />
+          <input id={daysId} inputMode="numeric" value={days} onChange={(e) => setDays(e.target.value.replace(/[^\d]/g, ""))} className="mono mt-1.5 block h-9 w-20 rounded-lg border border-line bg-raised px-3 text-[13px] text-fg outline-none focus:border-green focus:shadow-[0_0_0_3px_color-mix(in_srgb,var(--color-green)_15%,transparent)]" />
         </div>
         <Button type="submit" variant="secondary" loading={pending} disabled={!(Number(amount) >= 0.01 && Number(amount) <= 10 && Number(days) >= 1 && Number(days) <= 30)}>
           {!pending && <Landmark className="size-4" aria-hidden />}

@@ -16,7 +16,7 @@ export default async function SettingsPage() {
   const s = o.budget.summary;
   return (
     <div className="max-w-4xl">
-      <PageHeader title="Settings" description="You decide what Borderless may buy, how much it may spend and when it must ask you. Changes apply from its next decision." />
+      <PageHeader eyebrow="Spending authority" title="Settings" description="You decide what Borderless may buy, how much it may spend and when it must ask you. Changes apply from its next decision." />
       <SettingsForm
         key={JSON.stringify(o.policy) + o.budget.amountNgn + o.household.name}
         spentNgn={s.priorSpendNgn + s.spentNgn + s.committedNgn}
