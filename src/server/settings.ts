@@ -19,6 +19,12 @@ export const settingsSchema = z
     priorities: z.array(z.enum(UTILITY_KINDS)).length(3),
     approvedServices: z.array(z.enum(UTILITY_KINDS)).max(3),
     approvedNetworks: z.array(z.enum(MOBILE_NETWORKS)).max(4),
+    // Allocation rules (optional so older clients keep working; omitted = unchanged).
+    dailyAgentBudgetNgn: z.number().int().min(0).max(10_000_000).optional(),
+    taskBudgetNgn: z.number().int().min(0).max(10_000_000).optional(),
+    reserveNgn: z.number().int().min(0).max(10_000_000).optional(),
+    /** Per-utility cap per purchase; 0 or absent = no cap beyond the per-purchase limit. */
+    maxPerUtilityNgn: z.record(z.enum(UTILITY_KINDS), z.number().int().min(0).max(1_000_000)).optional(),
   })
   .refine((v) => new Set(v.priorities).size === 3, { message: "Each utility must appear once in priorities", path: ["priorities"] });
 
@@ -61,6 +67,12 @@ export async function updateSettings(db: Database, householdId: string, input: S
         priorities: input.priorities,
         approvedServices: input.approvedServices,
         approvedNetworks: input.approvedNetworks,
+        ...(input.dailyAgentBudgetNgn !== undefined ? { dailyAgentBudgetNgn: input.dailyAgentBudgetNgn } : {}),
+        ...(input.taskBudgetNgn !== undefined ? { taskBudgetNgn: input.taskBudgetNgn } : {}),
+        ...(input.reserveNgn !== undefined ? { reserveNgn: input.reserveNgn } : {}),
+        ...(input.maxPerUtilityNgn !== undefined
+          ? { maxPerUtilityNgn: Object.fromEntries(Object.entries(input.maxPerUtilityNgn).filter(([, n]) => n > 0)) }
+          : {}),
         // Providers follow the approved services (every demo provider of an approved service).
         approvedProviderIds: ALL_PROVIDERS.filter((m) => input.approvedServices.includes(m.definition.kind)).map((m) => m.definition.id),
         updatedAt: new Date(),
@@ -73,6 +85,9 @@ export async function updateSettings(db: Database, householdId: string, input: S
     if (before && before.overallAgentLimitNgn !== input.overallAgentLimitNgn) changes.push(`agent limit ₦${input.overallAgentLimitNgn.toLocaleString("en-NG")}`);
     if (before && before.manualApprovalThresholdNgn !== input.manualApprovalThresholdNgn) changes.push(`approval above ₦${input.manualApprovalThresholdNgn.toLocaleString("en-NG")}`);
     if (budget && budget.amountNgn !== input.budgetAmountNgn) changes.push(`budget ₦${input.budgetAmountNgn.toLocaleString("en-NG")}`);
+    if (before && input.dailyAgentBudgetNgn !== undefined && before.dailyAgentBudgetNgn !== input.dailyAgentBudgetNgn) changes.push(`daily agent limit ₦${input.dailyAgentBudgetNgn.toLocaleString("en-NG")}`);
+    if (before && input.taskBudgetNgn !== undefined && before.taskBudgetNgn !== input.taskBudgetNgn) changes.push(`per-run limit ₦${input.taskBudgetNgn.toLocaleString("en-NG")}`);
+    if (before && input.reserveNgn !== undefined && before.reserveNgn !== input.reserveNgn) changes.push(`reserve ₦${input.reserveNgn.toLocaleString("en-NG")}`);
     if (before && before.priorities.join() !== input.priorities.join()) changes.push(`priorities ${input.priorities.join(" > ")}`);
     await recordEvent(tx, {
       householdId,

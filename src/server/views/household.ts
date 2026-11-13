@@ -11,7 +11,8 @@ import { summariseBudget } from "../household/policy";
 import { loadHousehold } from "../household/state";
 import { explorerTxUrl } from "../payments/horizon";
 import { TESTNET_USDC } from "../payments/pricing";
-import { ALL_PROVIDERS, requireProvider } from "../providers/registry";
+import { ALL_PROVIDERS, providerById, requireProvider } from "../providers/registry";
+import type { OptionView, UtilityOptions } from "../agent/engine";
 import { forecast, type Forecast } from "../usage/forecast";
 import { recentSamples } from "../usage/simulator";
 import type { ExplanationLine } from "../agent/explain";
@@ -143,6 +144,8 @@ export interface DecisionView {
   lines: ExplanationLine[];
   budgetImpact: { remainingBeforeNgn: number; plannedNgn: number; remainingAfterNgn: number; agentAuthorityBeforeNgn: number; agentAuthorityAfterNgn: number };
   purchases: { id: string; kind: UtilityKind; amountNgn: number; stage: string; paymentStatus: string; fulfilmentStatus: string }[];
+  /** Options the engine weighed per utility (absent on records made before they were stored). */
+  options: (Omit<UtilityOptions, "considered"> & { considered: (OptionView & { providerName: string })[] })[];
 }
 
 export async function getDecisions(householdId: string, limit = 20): Promise<DecisionView[]> {
@@ -164,6 +167,10 @@ export async function getDecisions(householdId: string, limit = 20): Promise<Dec
       headline: ev?.title ?? "Assessment",
       lines: data.lines ?? [{ kind: "decision", utility: null, text: r.reasoning }],
       budgetImpact: r.budgetImpact as DecisionView["budgetImpact"],
+      options: ((r.selectedAction as { options?: UtilityOptions[] } | null)?.options ?? []).map((o) => ({
+        ...o,
+        considered: o.considered.map((x) => ({ ...x, providerName: providerById(x.providerId)?.definition.name ?? x.providerId })),
+      })),
       purchases: purchases
         .filter((p) => p.decisionId === r.id)
         .map((p) => ({ id: p.id, kind: p.kind, amountNgn: p.amountNgn, stage: p.stage, paymentStatus: p.paymentStatus, fulfilmentStatus: p.fulfilmentStatus })),

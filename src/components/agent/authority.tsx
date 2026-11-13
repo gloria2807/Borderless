@@ -24,6 +24,12 @@ export function AuthorityPanel({ o }: { o: HouseholdOverview }) {
         <KeyValue label="Per purchase, up to" mono>{naira(p.perPurchaseLimitNgn)}</KeyValue>
         <KeyValue label="Asks you first above" mono>{naira(p.manualApprovalThresholdNgn)}</KeyValue>
         <KeyValue label="Total agent limit this period" mono>{naira(p.overallAgentLimitNgn)}</KeyValue>
+        {p.dailyAgentBudgetNgn !== undefined && <KeyValue label="Per day, up to" mono>{naira(p.dailyAgentBudgetNgn)}</KeyValue>}
+        {p.taskBudgetNgn !== undefined && <KeyValue label="Per run, up to" mono>{naira(p.taskBudgetNgn)}</KeyValue>}
+        {!!p.reserveNgn && <KeyValue label="Kept in reserve" mono>{naira(p.reserveNgn)}</KeyValue>}
+        {Object.entries(p.maxPerUtilityNgn ?? {}).map(([k, n]) => (
+          <KeyValue key={k} label={`${UTILITY_NAMES[k as keyof typeof UTILITY_NAMES]} cap`} mono>{naira(n ?? 0)}</KeyValue>
+        ))}
         <KeyValue label="Left to spend" mono>{naira(Math.min(o.budget.summary.agentAuthorityRemainingNgn, o.budget.summary.remainingNgn))}</KeyValue>
         <KeyValue label="Priorities">{o.priorities.map((k) => UTILITY_NAMES[k]).join(", then ")}</KeyValue>
         <KeyValue label="Approved services">{p.approvedServices.map((k) => UTILITY_NAMES[k]).join(", ") || "None"}</KeyValue>

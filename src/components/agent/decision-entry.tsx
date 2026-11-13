@@ -21,6 +21,61 @@ const OUTCOME: Record<string, { label: string; tone: "positive" | "warning" | "c
   no_action: { label: "No action needed", tone: "neutral" },
 };
 
+const hours = (h: number | null) => (h === null ? "—" : h >= 48 ? `${Math.round(h / 24)} days` : `${Math.round(h)} h`);
+
+/** Every option the engine weighed, with why each lost. Collapsed by default. */
+function OptionsConsidered({ options }: { options: DecisionView["options"] }) {
+  return (
+    <div className="mt-4 space-y-2">
+      {options.map((o) => (
+        <details key={o.kind} className="group rounded-md border border-line-soft bg-bg-2">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-2 text-[13px] text-fg-2 hover:text-fg">
+            <span>
+              <span className="font-semibold text-fg">{UTILITY_NAMES[o.kind]}</span>: {o.considered.length} options considered
+              {o.impact && (
+                <span className="text-fg-3">
+                  {" "}· service {hours(o.impact.hoursBefore)} → {hours(o.impact.hoursAfter)}
+                </span>
+              )}
+            </span>
+            <span className="text-2xs text-fg-3 group-open:hidden">Show</span>
+            <span className="hidden text-2xs text-fg-3 group-open:inline">Hide</span>
+          </summary>
+          {/* w-0 min-w-full: the table scrolls inside the card instead of widening the page. */}
+          <div className="w-0 min-w-full overflow-x-auto border-t border-line-soft">
+            <table className="w-full min-w-[560px] text-left text-2xs">
+              <thead className="text-fg-3">
+                <tr>
+                  <th scope="col" className="px-3 py-1.5 font-medium">Provider</th>
+                  <th scope="col" className="px-3 py-1.5 font-medium">Option</th>
+                  <th scope="col" className="px-3 py-1.5 text-right font-medium">Price</th>
+                  <th scope="col" className="px-3 py-1.5 text-right font-medium">Service after</th>
+                  <th scope="col" className="px-3 py-1.5 text-right font-medium">Per day</th>
+                  <th scope="col" className="px-3 py-1.5 font-medium">Result</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-line-soft">
+                {o.considered.map((x) => (
+                  <tr key={`${x.providerId}:${x.productCode}`} className={x.status === "chosen" ? "bg-green-soft" : undefined}>
+                    <td className="px-3 py-1.5 text-fg-2">{x.providerName}</td>
+                    <td className="px-3 py-1.5 text-fg">{x.label}</td>
+                    <td className="mono px-3 py-1.5 text-right text-fg-2">{naira(x.amountNgn)}</td>
+                    <td className="mono px-3 py-1.5 text-right text-fg-2">{hours(x.coverageHours)}</td>
+                    <td className="mono px-3 py-1.5 text-right text-fg-3">{x.ngnPerDay === null ? "—" : naira(x.ngnPerDay)}</td>
+                    <td className={cn("px-3 py-1.5", x.status === "chosen" ? "font-semibold text-green" : x.status === "recommended" ? "text-amber" : "text-fg-3")}>
+                      {x.status === "chosen" ? "Chosen" : x.status === "recommended" ? `Recommended — ${x.reason}` : x.reason}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </details>
+      ))}
+    </div>
+  );
+}
+
 export function DecisionEntry({ d, compact = false }: { d: DecisionView; compact?: boolean }) {
   const outcome = OUTCOME[d.outcome] ?? { label: d.outcome, tone: "neutral" as const };
   const lines = compact ? d.lines.filter((l) => l.kind !== "fact" || l.utility === null).slice(0, 6) : d.lines;
@@ -77,6 +132,8 @@ export function DecisionEntry({ d, compact = false }: { d: DecisionView; compact
           })}
         </ul>
       )}
+      {!compact && d.options.length > 0 && <OptionsConsidered options={d.options} />}
+
       {!compact && d.budgetImpact.plannedNgn > 0 && (
         <p className="mt-3 text-2xs text-fg-3">
           Budget impact: {naira(d.budgetImpact.remainingBeforeNgn)} before, {naira(d.budgetImpact.plannedNgn)} committed, {naira(d.budgetImpact.remainingAfterNgn)} after.

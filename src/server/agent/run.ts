@@ -123,7 +123,7 @@ export async function runAgent(
       shortages: serialisable(decision.assessments.filter((a) => a.needsAction).map((a) => ({ kind: a.kind, urgency: a.urgency, hoursRemaining: a.forecast.hoursRemaining }))),
       urgency: serialisable(decision.assessments.map(({ forecast: f, ...a }) => ({ ...a, hoursRemaining: f.hoursRemaining, usageRatio: f.usageRatio }))),
       candidates: serialisable(decision.candidates),
-      selectedAction: serialisable({ selected: decision.selected, deferred: decision.deferred, flags: decision.flags }),
+      selectedAction: serialisable({ selected: decision.selected, deferred: decision.deferred, flags: decision.flags, options: decision.options, notNeeded: decision.notNeeded }),
       reasoning: explanation.reasoning,
       budgetImpact: serialisable(decision.budgetImpact),
       outcome: decision.outcome,

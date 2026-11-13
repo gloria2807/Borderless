@@ -27,6 +27,10 @@ export default async function SettingsPage() {
           priorities: o.priorities,
           approvedServices: o.policy.approvedServices,
           approvedNetworks: o.policy.approvedNetworks,
+          dailyAgentBudgetNgn: o.policy.dailyAgentBudgetNgn ?? 0,
+          taskBudgetNgn: o.policy.taskBudgetNgn ?? 0,
+          reserveNgn: o.policy.reserveNgn ?? 0,
+          maxPerUtilityNgn: { electricity: o.policy.maxPerUtilityNgn?.electricity ?? 0, airtime: o.policy.maxPerUtilityNgn?.airtime ?? 0, data: o.policy.maxPerUtilityNgn?.data ?? 0 },
         }}
       />
     </div>

@@ -84,6 +84,7 @@ function describeForecast(f: Forecast): ExplanationLine[] {
     const when = f.depletesAt ? ` (around ${formatSimTime(f.depletesAt)})` : "";
     lines.push({ kind: "prediction", utility: k, text: `At this rate it is likely to run out in ${formatDuration(f.hoursRemaining)}${when}.` });
   }
+  if (f.confidence?.level === "low") lines.push({ kind: "observation", utility: k, text: `Forecast confidence is low: ${f.confidence.basis}` });
   return lines;
 }
 
@@ -150,20 +151,46 @@ export function explain(decision: Decision): Explanation {
     lines.push({ kind: "decision", utility: p.kind, text: describePurchase(p, decision) });
     const why = describeProviderChoice(p, decision);
     if (why) lines.push(why);
+    const alt = describeAlternatives(p, decision);
+    if (alt) lines.push(alt);
   }
   for (const d of decision.deferred) lines.push(describeDeferral(d, decision));
   if (decision.selected.length > 0) {
     lines.push({ kind: "decision", utility: null, text: `After this, ${naira(decision.budgetImpact.remainingAfterNgn)} of the budget will remain.` });
   }
 
-  const watch = decision.assessments.filter((a) => a.urgency === "watch" && !a.forecast.unusualUsage);
-  for (const w of watch) {
-    lines.push({ kind: "prediction", utility: w.kind, text: `${NAME[w.kind]} looks fine for now (${formatDuration(w.forecast.hoursRemaining)} left). I'll keep watching it.` });
+  // The "no purchase needed" path, stated explicitly for every utility that was checked.
+  const calm = decision.assessments.filter((a) => !a.needsAction && !a.forecast.unusualUsage);
+  for (const w of calm) {
+    lines.push({
+      kind: "prediction",
+      utility: w.kind,
+      text:
+        w.urgency === "watch"
+          ? `${NAME[w.kind]} looks fine for now (${formatDuration(w.forecast.hoursRemaining)} left). I'll keep watching it.`
+          : `${NAME[w.kind]} doesn't need a purchase (${formatDuration(w.forecast.hoursRemaining)} left).`,
+    });
   }
 
   const headline = headlineFor(decision);
   if (lines.length === 0) lines.push({ kind: "observation", utility: null, text: "Electricity, airtime and data all have comfortable balances. No action needed." });
   return { headline, lines, reasoning: lines.map((l) => l.text).join(" ") };
+}
+
+/** The closest alternatives the engine rejected, with the reason (at most two). */
+function describeAlternatives(p: PlannedPurchase, decision: Decision): ExplanationLine | null {
+  const opts = decision.options?.find((o) => o.kind === p.kind);
+  if (!opts) return null;
+  // Skip providers excluded wholesale (outage, not approved): the provider-choice line covers them.
+  const usable = new Set(decision.candidates.filter((c) => c.kind === p.kind && !c.violations.some((v) => v.code === "provider_unavailable" || v.code === "provider_not_approved")).map((c) => c.product.providerId));
+  const rejected = opts.considered.filter((o) => o.status === "rejected" && o.reason && usable.has(o.providerId));
+  const cheaper = rejected.filter((o) => o.amountNgn < p.product.amountNgn).sort((a, b) => b.amountNgn - a.amountNgn)[0];
+  const pricier = rejected.filter((o) => o.amountNgn > p.product.amountNgn).sort((a, b) => a.amountNgn - b.amountNgn)[0];
+  const picks = [cheaper, pricier].filter((o): o is NonNullable<typeof o> => !!o);
+  if (!picks.length) return null;
+  const name = (id: string) => providerById(id)?.definition.name ?? id;
+  const text = picks.map((o) => `${naira(o.amountNgn)} from ${name(o.providerId)} (${o.reason!.replace(/.$/, "").replace(/^./, (c) => c.toLowerCase())})`).join("; ");
+  return { kind: "decision", utility: p.kind, text: `Also considered: ${text}.` };
 }
 
 /** Why this provider, when more than one could have served the need. */

@@ -77,23 +77,11 @@ async function event(ctx: ToolContext, e: RunEventInput) {
   return appendRunEvent(ctx.db, ctx.runId, e);
 }
 
-/** Forecast confidence from how much and how steady the observed history is. */
-export function forecastConfidence(f: Forecast, samples: { delta: number }[]): { level: "high" | "medium" | "low"; basis: string } {
-  if (f.rateSource === "baseline") return { level: "low", basis: "Too little recent usage; using the household's usual rate." };
-  const xs = samples.map((x) => x.delta).filter((d) => d > 0);
-  const mean = xs.reduce((t, x) => t + x, 0) / Math.max(1, xs.length);
-  const sd = Math.sqrt(xs.reduce((t, x) => t + (x - mean) ** 2, 0) / Math.max(1, xs.length));
-  const cv = mean > 0 ? sd / mean : 1;
-  if (xs.length >= RECENT_WINDOW_HOURS && cv < 0.35) return { level: "high", basis: `${xs.length} recent hourly readings, steady use (variation ${Math.round(cv * 100)}%).` };
-  return { level: "medium", basis: `${xs.length} recent hourly readings, variation ${Math.round(cv * 100)}%.` };
-}
-
 async function utilityView(db: Database, householdId: string, kind: UtilityKind) {
   const input = await buildDecisionInput(db, householdId);
   const u = input.utilities.find((x) => x.kind === kind);
   if (!u) throw new Error(`No ${kind} account`);
-  const samples = await recentSamples(db, u.accountId, input.now, RECENT_WINDOW_HOURS);
-  return { input, u, confidence: forecastConfidence(u.forecast, samples) };
+  return { input, u, confidence: u.forecast.confidence };
 }
 
 function forecastSummary(f: Forecast) {
@@ -185,6 +173,22 @@ function revalidateQuote(q: Quote): { valid: boolean; detail: string } {
   return { valid: true, detail: `Quote ${q.quoteId} from ${q.providerName}: unexpired, registered payee, consistent price.` };
 }
 
+/**
+ * Necessity guard (code, not the model): the agent may only buy a utility that actually
+ * needs it. A utility with plenty of service left, or whose usage is flagged as unusual
+ * (owner review first), is refused before any quote is spent.
+ */
+export async function necessityFor(ctx: ToolContext, kind: UtilityKind): Promise<{ needed: boolean; detail: string }> {
+  const input = await buildDecisionInput(ctx.db, ctx.householdId);
+  const u = input.utilities.find((x) => x.kind === kind);
+  if (!u) return { needed: false, detail: `The household has no ${kind} account.` };
+  const f = u.forecast;
+  const left = Number.isFinite(f.hoursRemaining) ? `about ${Math.round(f.hoursRemaining)} hours` : "an unlimited time";
+  if (f.unusualUsage) return { needed: false, detail: `${kind} use is ${f.usageRatio.toFixed(1)}x the usual rate. It is flagged for the owner's review; do not buy more automatically.` };
+  if (f.urgency === "ok") return { needed: false, detail: `${kind} has ${left} of service left. A purchase is not needed now.` };
+  return { needed: true, detail: `${kind} has ${left} of service left (${f.urgency}).` };
+}
+
 async function policyFor(ctx: ToolContext, q: Quote, withWallet: boolean) {
   const state = await loadHousehold(ctx.db, ctx.householdId);
   const [account] = await ctx.db.select().from(s.utilityAccounts).where(and(eq(s.utilityAccounts.householdId, ctx.householdId), eq(s.utilityAccounts.kind, q.utility)));
@@ -239,14 +243,16 @@ export const TOOLS: ToolDefinition[] = [
     parameters: { type: "object", properties: { utility: utilityEnum }, required: ["utility"], additionalProperties: false },
     args: z.object({ utility: z.enum(UTILITY_KINDS) }).strict(),
     run: async (ctx, args: { utility: UtilityKind }) => {
-      const { input, u, confidence } = await utilityView(ctx.db, ctx.householdId, args.utility);
-      const last24 = await recentSamples(ctx.db, u.accountId, input.now, 24);
+      const { u, confidence } = await utilityView(ctx.db, ctx.householdId, args.utility);
+      const h = u.forecast.history;
       return {
         utility: args.utility,
         ...forecastSummary(u.forecast),
         forecast_confidence: confidence.level,
         confidence_basis: confidence.basis,
-        used_last_24h: Math.round(last24.filter((x) => x.delta > 0).reduce((t, x) => t + x.delta, 0) * 100) / 100,
+        history_considered: { recent_window_hours: h.windowHours, readings_in_window: h.readingsInWindow, readings_last_24h: h.readingsLast24h },
+        used_last_24h: h.usedLast24h,
+        assumptions: u.forecast.assumptions,
         note: "Forecasts are estimates from simulated usage, not guarantees.",
       };
     },
@@ -340,6 +346,12 @@ export const TOOLS: ToolDefinition[] = [
         flags: d.flags,
         ranking: d.assessments.map((a) => ({ utility: a.kind, urgency: a.urgency, score: a.score })),
         budget_after_ngn: d.budgetImpact.remainingAfterNgn,
+        options_considered: d.options.map((o) => ({
+          utility: o.kind,
+          expected_impact: o.impact,
+          options: o.considered.map((x) => ({ provider_id: x.providerId, product_code: x.productCode, price_ngn: x.amountNgn, service_hours_after: x.coverageHours, ngn_per_day: x.ngnPerDay, status: x.status, reason: x.reason })),
+        })),
+        not_needed: d.notNeeded.map((n) => ({ utility: n.kind, hours_left: n.hoursRemaining, reason: n.reason })),
       };
     },
   },
@@ -388,8 +400,11 @@ export const TOOLS: ToolDefinition[] = [
       const q = ctx.quotes.get(args.quote_id);
       if (!q) return { error: "Unknown quote_id. Only quotes from request_quote in this run can be used." };
       const r = await policyFor(ctx, q, true);
-      await event(ctx, { stage: "checking_policy", type: "policy.evaluated", utility: q.utility, decision: r.outcome, reason: r.violations.map((v) => v.message).join(" ") || null, result: { checks: r.checks, dry_run: true } });
+      const need = await necessityFor(ctx, q.utility);
+      await event(ctx, { stage: "checking_policy", type: "policy.evaluated", utility: q.utility, decision: r.outcome, reason: r.violations.map((v) => v.message).join(" ") || null, result: { checks: r.checks, dry_run: true, necessity: need } });
       return {
+        needed: need.needed,
+        need: need.detail,
         outcome: r.outcome === "allow" ? "would be allowed" : r.outcome === "require_approval" ? "would need owner approval" : "would be refused",
         refused_because: r.violations.map((v) => v.message),
         rules: r.checks.map((c) => ({ step: c.step, rule: c.label, result: c.status })),
@@ -406,6 +421,11 @@ export const TOOLS: ToolDefinition[] = [
     run: async (ctx, args: { quote_id: string; reason: string }) => {
       const q = ctx.quotes.get(args.quote_id);
       if (!q) return { status: "refused", reason: "Unknown quote_id. Only quotes from request_quote in this run can be used." };
+      const need = await necessityFor(ctx, q.utility);
+      if (!need.needed) {
+        await event(ctx, { stage: "deciding", type: "purchase.not_needed", utility: q.utility, decision: "no_purchase", reason: need.detail });
+        return { status: "refused", reason: need.detail, note: "Nothing was paid. This is the right outcome when a utility has enough left." };
+      }
       const quoteCheck = revalidateQuote(q);
       if (!quoteCheck.valid) {
         await event(ctx, { stage: "checking_policy", type: "policy.evaluated", utility: q.utility, decision: "deny", reason: quoteCheck.detail });

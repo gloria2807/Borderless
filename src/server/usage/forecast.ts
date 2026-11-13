@@ -54,6 +54,34 @@ export interface Forecast {
   limitedBy: "depletion" | "expiry" | "none";
   depletesAt: Date | null;
   urgency: UrgencyLevel;
+  /** How far the prediction can be trusted, from how much and how steady the history is. */
+  confidence: ForecastConfidence;
+  /** The usage history the forecast actually considered. */
+  history: { windowHours: number; readingsInWindow: number; readingsLast24h: number; usedLast24h: number };
+  /** Plain-language assumptions behind the prediction. */
+  assumptions: string[];
+}
+
+export interface ForecastConfidence {
+  level: "high" | "medium" | "low";
+  basis: string;
+}
+
+/** Window readings that vary less than this (coefficient of variation) count as steady. */
+const STEADY_CV = 0.35;
+
+export function confidenceFor(windowDeltas: number[], rateSource: "observed" | "baseline", unusualUsage: boolean, readingsLast24h: number): ForecastConfidence {
+  if (rateSource === "baseline") return { level: "low", basis: "Too little recent usage history; using the household's usual rate." };
+  const xs = windowDeltas.filter((d) => d > 0);
+  const mean = xs.reduce((t, x) => t + x, 0) / Math.max(1, xs.length);
+  const sd = Math.sqrt(xs.reduce((t, x) => t + (x - mean) ** 2, 0) / Math.max(1, xs.length));
+  const cv = mean > 0 ? sd / mean : 1;
+  const variation = `variation ${Math.round(cv * 100)}%`;
+  if (unusualUsage) return { level: "medium", basis: `Usage changed recently (${xs.length} readings, ${variation}); the new rate may not last.` };
+  if (xs.length >= RECENT_WINDOW_HOURS && cv < STEADY_CV && readingsLast24h >= 12) {
+    return { level: "high", basis: `${xs.length} recent hourly readings of steady use (${variation}), ${readingsLast24h} readings in the last 24 hours.` };
+  }
+  return { level: "medium", basis: `${xs.length} recent hourly readings, ${variation}.` };
 }
 
 /** Urgency thresholds, in hours of service remaining. */
@@ -91,6 +119,19 @@ export function forecast(reading: UtilityReading, samples: UsageSample[], now: D
       ? "expiry"
       : "depletion";
 
+  const t = now.getTime();
+  const windowDeltas = samples.filter((x) => x.delta > 0 && x.simTime.getTime() > t - RECENT_WINDOW_HOURS * HOUR && x.simTime.getTime() <= t).map((x) => x.delta);
+  const last24 = samples.filter((x) => x.delta > 0 && x.simTime.getTime() > t - 24 * HOUR && x.simTime.getTime() <= t);
+  const unusualUsage = useObserved && usageRatio >= ANOMALY_RATIO;
+  const assumptions = [
+    useObserved
+      ? `Use continues at the rate observed over the last ${RECENT_WINDOW_HOURS} hours.`
+      : "Use follows the household's usual rate (not enough recent readings).",
+  ];
+  if (hoursToExpiry !== null) assumptions.push("Any data left when the bundle expires is forfeited.");
+  if (unusualUsage) assumptions.push("Recent use is well above normal; if it returns to normal the balance lasts longer.");
+  assumptions.push("Usage is simulated for this demo household.");
+
   return {
     kind: reading.kind,
     balance: reading.balance,
@@ -99,12 +140,20 @@ export function forecast(reading: UtilityReading, samples: UsageSample[], now: D
     rateSource: useObserved ? "observed" : "baseline",
     baselinePerHour: reading.baselinePerHour,
     usageRatio,
-    unusualUsage: useObserved && usageRatio >= ANOMALY_RATIO,
+    unusualUsage,
     hoursToDepletion,
     hoursToExpiry,
     hoursRemaining,
     limitedBy,
     depletesAt: Number.isFinite(hoursRemaining) ? new Date(now.getTime() + hoursRemaining * HOUR) : null,
     urgency: urgencyFor(hoursRemaining, reading.balance),
+    confidence: confidenceFor(windowDeltas, useObserved ? "observed" : "baseline", unusualUsage, last24.length),
+    history: {
+      windowHours: RECENT_WINDOW_HOURS,
+      readingsInWindow: windowDeltas.length,
+      readingsLast24h: last24.length,
+      usedLast24h: Math.round(last24.reduce((sum, x) => sum + x.delta, 0) * 100) / 100,
+    },
+    assumptions,
   };
 }

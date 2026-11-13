@@ -20,6 +20,11 @@ export interface SettingsValues {
   priorities: Kind[];
   approvedServices: Kind[];
   approvedNetworks: Net[];
+  dailyAgentBudgetNgn: number;
+  taskBudgetNgn: number;
+  reserveNgn: number;
+  /** 0 = no separate cap for that utility. */
+  maxPerUtilityNgn: Record<Kind, number>;
 }
 
 function Section({ title, description, children }: { title: string; description: string; children: ReactNode }) {
@@ -74,6 +79,9 @@ export function SettingsForm({ initial, spentNgn }: { initial: SettingsValues; s
   const warnings: string[] = [];
   if (v.manualApprovalThresholdNgn > v.perPurchaseLimitNgn) warnings.push("The approval threshold is above the per-purchase limit, so Borderless will never ask for approval.");
   if (v.overallAgentLimitNgn > v.budgetAmountNgn) warnings.push("The agent limit is above the budget. The budget still caps spending.");
+  if (v.reserveNgn >= v.budgetAmountNgn && v.budgetAmountNgn > 0) warnings.push("The reserve is as large as the budget, so Borderless can't buy anything.");
+  if (v.dailyAgentBudgetNgn === 0 || v.taskBudgetNgn === 0) warnings.push("A ₦0 daily or per-run limit stops Borderless from buying anything.");
+  else if (v.dailyAgentBudgetNgn < v.perPurchaseLimitNgn) warnings.push("The daily limit is below the per-purchase limit, so the daily limit is what binds.");
   if (v.budgetAmountNgn < spentNgn) warnings.push(`The new budget is below what's already spent this period (${naira(spentNgn)}). Borderless won't buy anything until the next period.`);
 
   const move = (i: number, d: -1 | 1) => {
@@ -112,6 +120,21 @@ export function SettingsForm({ initial, spentNgn }: { initial: SettingsValues; s
         <MoneyField label="Per purchase, up to" value={v.perPurchaseLimitNgn} onChange={(n) => set("perPurchaseLimitNgn", n)} help="No single purchase can be larger than this." />
         <MoneyField label="Ask me before purchases above" value={v.manualApprovalThresholdNgn} onChange={(n) => set("manualApprovalThresholdNgn", n)} help="Larger purchases wait for your approval." />
         <MoneyField label="Total Borderless can spend this period" value={v.overallAgentLimitNgn} onChange={(n) => set("overallAgentLimitNgn", n)} help="Your own purchases don't count towards this." />
+      </Section>
+
+      <Section title="Budget allocation" description="How Borderless shares money between days, runs and utilities. Also enforced on the server before signing.">
+        <MoneyField label="Borderless can spend per day, up to" value={v.dailyAgentBudgetNgn} onChange={(n) => set("dailyAgentBudgetNgn", n)} help="Resets at midnight, household time." />
+        <MoneyField label="Each agent run can spend, up to" value={v.taskBudgetNgn} onChange={(n) => set("taskBudgetNgn", n)} help="A single assessment can't spend more than this, however many utilities need help." />
+        <MoneyField label="Always keep in reserve" value={v.reserveNgn} onChange={(n) => set("reserveNgn", n)} help="Borderless won't spend the last part of the budget. Your own purchases can." />
+        <fieldset>
+          <legend className="text-[13px] font-medium text-fg-2">Per-purchase cap by utility</legend>
+          <p className="mt-0.5 text-2xs text-fg-3">₦0 means no separate cap (the per-purchase limit applies).</p>
+          <div className="mt-2 grid gap-3 sm:grid-cols-3">
+            {(["electricity", "airtime", "data"] as const).map((k) => (
+              <MoneyField key={k} label={UTILITY_NAMES[k]} value={v.maxPerUtilityNgn[k]} onChange={(n) => set("maxPerUtilityNgn", { ...v.maxPerUtilityNgn, [k]: n })} />
+            ))}
+          </div>
+        </fieldset>
       </Section>
 
       <Section title="Household budget" description="All household purchases come out of this budget, including your own.">

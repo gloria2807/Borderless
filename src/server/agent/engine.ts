@@ -20,7 +20,9 @@ import {
   type ViolationCode,
 } from "../household/policy";
 import type { Product } from "../providers/types";
-import type { Forecast, UrgencyLevel } from "../usage/forecast";
+import { URGENCY_HOURS, type Forecast, type UrgencyLevel } from "../usage/forecast";
+
+const URGENCY_THRESHOLD_LOW = URGENCY_HOURS.low;
 
 // ── Tunables (documented, deliberate) ───────────────────────────────────────
 
@@ -126,6 +128,35 @@ export interface BudgetImpact {
   agentAuthorityAfterNgn: number;
 }
 
+/** One purchase option the engine weighed, and what happened to it. */
+export interface OptionView {
+  providerId: string;
+  productCode: string;
+  label: string;
+  amountNgn: number;
+  coverageHours: number | null;
+  /** NGN per day of service, when it can be computed. */
+  ngnPerDay: number | null;
+  status: "chosen" | "rejected" | "recommended";
+  /** Why it was not chosen (empty for the chosen option). */
+  reason: string | null;
+}
+
+/** Every option considered for one utility, with the expected effect of the choice. */
+export interface UtilityOptions {
+  kind: UtilityKind;
+  considered: OptionView[];
+  /** Expected household impact of the chosen option (null if nothing was chosen). */
+  impact: { balanceBefore: number; balanceAfter: number; unit: string; hoursBefore: number | null; hoursAfter: number | null; costNgn: number } | null;
+}
+
+/** A utility that needs no purchase now, and why. */
+export interface NotNeeded {
+  kind: UtilityKind;
+  hoursRemaining: number | null;
+  reason: string;
+}
+
 export interface Decision {
   now: Date;
   assessments: Assessment[];
@@ -135,6 +166,10 @@ export interface Decision {
   flags: Flag[];
   outcome: DecisionOutcome;
   budgetImpact: BudgetImpact;
+  /** Alternatives considered and rejected, per utility that needed action. */
+  options: UtilityOptions[];
+  /** Utilities that were checked and need nothing now. */
+  notNeeded: NotNeeded[];
 }
 
 // ── Engine ──────────────────────────────────────────────────────────────────
@@ -396,6 +431,8 @@ export function decide(input: DecisionInput): Decision {
     deferred,
     flags,
     outcome,
+    options: buildOptions(input, candidates, selected, deferred),
+    notNeeded: assessments.filter((a) => !a.needsAction).map((a) => notNeededFor(a)),
     budgetImpact: {
       remainingBeforeNgn: before.remainingNgn,
       plannedNgn,
@@ -404,4 +441,75 @@ export function decide(input: DecisionInput): Decision {
       agentAuthorityAfterNgn: after.agentAuthorityRemainingNgn,
     },
   };
+}
+
+// ── Options considered (audit and explanation) ─────────────────────────────
+
+const ngn = (n: number) => `₦${n.toLocaleString("en-NG")}`;
+const span = (hours: number) => (!Number.isFinite(hours) ? "indefinitely" : hours >= 48 ? `about ${Math.round(hours / 24)} days` : `about ${Math.round(hours)} hours`);
+const finite = (n: number) => (Number.isFinite(n) ? Math.round(n * 10) / 10 : null);
+
+/** Why `c` lost to `chosen` (or why nothing could be bought). Deterministic, evidence-based. */
+export function rejectionReason(c: Candidate, chosen: PlannedPurchase | null): string {
+  if (c.authority === "deny") return c.violations[0]?.message ?? "Refused by the household's spending rules.";
+  if (!chosen) return c.authority === "require_approval" ? "Would need your approval." : "Not chosen.";
+  if (c.authority === "require_approval" && !chosen.requiresApproval) return "Would need your approval; an option within your limits was available.";
+  if (!c.meetsMinimum) return `Restores only ${span(c.coverageHours)} of service — less than the 2-day minimum.`;
+  const extra = c.product.amountNgn - chosen.product.amountNgn;
+  if (extra > 0) {
+    if (chosen.basis === "budget_shared") return `Costs ${ngn(extra)} more and would leave too little budget for ${chosen.reservedFor.map((r) => r.kind).join(" and ")}.`;
+    if (chosen.basis === "preferred") return `Costs ${ngn(extra)} more than needed; the chosen option already restores the target coverage.`;
+    return `Costs ${ngn(extra)} more than the chosen option.`;
+  }
+  if (extra === 0) return c.coverageHours < chosen.coverageHours ? "Same price, less service." : "Same price and service; the chosen offer was listed first.";
+  if (chosen.basis === "preferred" && !c.meetsPreferred) return `Cheaper, but restores only ${span(c.coverageHours)} — short of the target.`;
+  return `Cheaper, but gives less service: about ${Math.round(c.coverageHours)} hours vs ${Math.round(chosen.coverageHours)}.`;
+}
+
+function buildOptions(input: DecisionInput, candidates: Candidate[], selected: PlannedPurchase[], deferred: Deferral[]): UtilityOptions[] {
+  const kinds = [...new Set(candidates.map((c) => c.kind))];
+  return kinds.map((kind) => {
+    const chosen = selected.find((p) => p.kind === kind) ?? null;
+    const recommendation = deferred.find((d) => d.kind === kind)?.recommendation ?? null;
+    const isChosen = (c: Candidate) => !!chosen && c.product.providerId === chosen.product.providerId && c.product.code === chosen.product.code;
+    const isRecommended = (c: Candidate) => !!recommendation && c.product.providerId === recommendation.product.providerId && c.product.code === recommendation.product.code;
+    const considered = candidates
+      .filter((c) => c.kind === kind)
+      .map((c): OptionView => {
+        const cover = finite(c.coverageHours);
+        return {
+          providerId: c.product.providerId,
+          productCode: c.product.code,
+          label: c.product.label,
+          amountNgn: c.product.amountNgn,
+          coverageHours: cover,
+          ngnPerDay: cover && cover > 0 ? Math.round((c.product.amountNgn / cover) * 24) : null,
+          status: isChosen(c) ? "chosen" : isRecommended(c) ? "recommended" : "rejected",
+          reason: isChosen(c) ? null : rejectionReason(c, chosen),
+        };
+      })
+      .sort((a, b) => (a.status === "chosen" ? -1 : b.status === "chosen" ? 1 : a.amountNgn - b.amountNgn || (b.coverageHours ?? 0) - (a.coverageHours ?? 0)));
+    const u = input.utilities.find((x) => x.kind === kind)!;
+    const impact = chosen
+      ? {
+          balanceBefore: u.forecast.balance,
+          balanceAfter: Math.round((Math.max(0, u.forecast.balance) + chosen.product.quantity) * 100) / 100,
+          unit: u.forecast.unit,
+          hoursBefore: finite(u.forecast.hoursRemaining),
+          hoursAfter: finite(chosen.coverageHours),
+          costNgn: chosen.product.amountNgn,
+        }
+      : null;
+    return { kind, considered, impact };
+  });
+}
+
+function notNeededFor(a: Assessment): NotNeeded {
+  const h = a.forecast.hoursRemaining;
+  const reason = !Number.isFinite(h)
+    ? "No consumption recorded; nothing to top up."
+    : a.urgency === "watch"
+      ? `${span(h)} of service left. Borderless buys when less than ${URGENCY_THRESHOLD_LOW} hours remain, and keeps watching.`
+      : `${span(h)} of service left — comfortably above the ${URGENCY_THRESHOLD_LOW}-hour buying point.`;
+  return { kind: a.kind, hoursRemaining: finite(h), reason };
 }
