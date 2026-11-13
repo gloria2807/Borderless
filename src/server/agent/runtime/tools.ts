@@ -174,6 +174,49 @@ function revalidateQuote(q: Quote): { valid: boolean; detail: string } {
 }
 
 /**
+ * Pay for a purchase and record every real payment stage in the run's event log
+ * (policy check on the 402, signing, settlement, verification, outcome). Used by the
+ * agent's purchase tool and by owner approvals of purchases a run parked.
+ */
+export async function payAndLog(db: Database, runId: string, purchaseId: string, utility: UtilityKind, buyer: Omit<BuyerOptions, "runId" | "onStage"> = {}) {
+  const log = (e: RunEventInput) => appendRunEvent(db, runId, e);
+  const result = await executePurchase(db, purchaseId, {
+    ...buyer,
+    runId,
+    onStage: async (st: BuyerStage) => {
+      if (st.stage === "failed") {
+        await log({ stage: "requesting_payment", type: "payment.failed", utility, purchaseId, paymentStatus: st.charged === "no" ? "failed" : "unknown", reason: st.detail, error: st.code });
+      } else if (st.stage === "checking_policy") {
+        await log({ stage: "checking_policy", type: "policy.evaluated", utility, purchaseId, decision: st.checks.some((c) => c.status === "fail") ? "deny" : "allow", reason: st.detail, result: { checks: st.checks, http_402: { amount_usdc: formatAtomic(st.amountAtomic), pay_to: st.payTo, network: "stellar:testnet", asset: "USDC (testnet)" } } });
+      } else {
+        await log({ stage: st.stage, type: `payment.${st.stage}`, utility, purchaseId, reason: st.detail, txHash: "txHash" in st ? st.txHash : null });
+      }
+    },
+  });
+  const receipt = result.receipt?.fulfilment.status === "fulfilled" ? result.receipt.fulfilment : null;
+  await log({
+    stage: result.fulfilmentStatus === "fulfilled" ? "updating_household" : "verifying_fulfilment",
+    type: result.stage === "completed" ? "purchase.completed" : `purchase.${result.stage}`,
+    utility,
+    purchaseId,
+    paymentStatus: result.paymentStatus,
+    txHash: result.txHash,
+    decision: result.stage,
+    reason: result.failureMessage,
+    result: {
+      payment: result.paymentStatus,
+      fulfilment: result.fulfilmentStatus,
+      explorer: result.explorerUrl,
+      balance_before: receipt?.balanceBefore ?? null,
+      balance_after: receipt?.balanceAfter ?? null,
+      unit: receipt?.unit ?? null,
+      demo_token: receipt?.demoToken ?? null,
+    },
+  });
+  return { result, receipt };
+}
+
+/**
  * Necessity guard (code, not the model): the agent may only buy a utility that actually
  * needs it. A utility with plenty of service left, or whose usage is flagged as unusual
  * (owner review first), is refused before any quote is spent.
@@ -463,39 +506,9 @@ export const TOOLS: ToolDefinition[] = [
         throw err;
       }
 
-      const result = await executePurchase(ctx.db, purchaseId, {
+      const { result, receipt } = await payAndLog(ctx.db, ctx.runId, purchaseId, q.utility, {
         ...ctx.buyer,
         walletBalance: ctx.walletBalance ?? ctx.buyer?.walletBalance,
-        runId: ctx.runId,
-        onStage: async (st: BuyerStage) => {
-          if (st.stage === "failed") {
-            await event(ctx, { stage: "requesting_payment", type: "payment.failed", utility: q.utility, purchaseId, paymentStatus: st.charged === "no" ? "failed" : "unknown", reason: st.detail, error: st.code });
-          } else if (st.stage === "checking_policy") {
-            await event(ctx, { stage: "checking_policy", type: "policy.evaluated", utility: q.utility, purchaseId, decision: st.checks.some((c) => c.status === "fail") ? "deny" : "allow", reason: st.detail, result: { checks: st.checks, http_402: { amount_usdc: formatAtomic(st.amountAtomic), pay_to: st.payTo, network: "stellar:testnet", asset: "USDC (testnet)" } } });
-          } else {
-            await event(ctx, { stage: st.stage, type: `payment.${st.stage}`, utility: q.utility, purchaseId, reason: st.detail, txHash: "txHash" in st ? st.txHash : null });
-          }
-        },
-      });
-      const receipt = result.receipt?.fulfilment.status === "fulfilled" ? result.receipt.fulfilment : null;
-      await event(ctx, {
-        stage: result.fulfilmentStatus === "fulfilled" ? "updating_household" : "verifying_fulfilment",
-        type: result.stage === "completed" ? "purchase.completed" : `purchase.${result.stage}`,
-        utility: q.utility,
-        purchaseId,
-        paymentStatus: result.paymentStatus,
-        txHash: result.txHash,
-        decision: result.stage,
-        reason: result.failureMessage,
-        result: {
-          payment: result.paymentStatus,
-          fulfilment: result.fulfilmentStatus,
-          explorer: result.explorerUrl,
-          balance_before: receipt?.balanceBefore ?? null,
-          balance_after: receipt?.balanceAfter ?? null,
-          unit: receipt?.unit ?? null,
-          demo_token: receipt?.demoToken ?? null,
-        },
       });
       return {
         status: result.stage,

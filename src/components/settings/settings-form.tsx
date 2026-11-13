@@ -23,6 +23,7 @@ export interface SettingsValues {
   dailyAgentBudgetNgn: number;
   taskBudgetNgn: number;
   reserveNgn: number;
+  approvalTtlSeconds: number;
   /** 0 = no separate cap for that utility. */
   maxPerUtilityNgn: Record<Kind, number>;
 }
@@ -65,6 +66,34 @@ function MoneyField({ label, help, value, onChange }: { label: string; help?: st
           {help}
         </p>
       )}
+    </div>
+  );
+}
+
+const WINDOWS: [number, string][] = [
+  [60, "1 minute"],
+  [180, "3 minutes"],
+  [600, "10 minutes"],
+  [3600, "1 hour"],
+  [86_400, "1 day"],
+];
+
+function ApprovalWindow({ value, onChange }: { value: number; onChange: (n: number) => void }) {
+  const id = useId();
+  const options = WINDOWS.some(([s]) => s === value) ? WINDOWS : [[value, `${value} seconds`] as [number, string], ...WINDOWS];
+  return (
+    <div>
+      <label htmlFor={id} className="text-[13px] font-medium text-fg-2">
+        Approval requests expire after
+      </label>
+      <select id={id} value={value} onChange={(e) => onChange(Number(e.target.value))} className="mt-1.5 block h-9 rounded-md border border-line bg-bg-2 px-2 text-[13px] text-fg outline-none focus:border-green">
+        {options.map(([s, label]) => (
+          <option key={s} value={s}>
+            {label}
+          </option>
+        ))}
+      </select>
+      <p className="mt-1 text-2xs text-fg-3">An unanswered request is cancelled unpaid, and Borderless reassesses with fresh prices.</p>
     </div>
   );
 }
@@ -119,6 +148,7 @@ export function SettingsForm({ initial, spentNgn }: { initial: SettingsValues; s
       <Section title="Spending limits" description="Checked on the server before every payment is signed. Borderless cannot exceed them.">
         <MoneyField label="Per purchase, up to" value={v.perPurchaseLimitNgn} onChange={(n) => set("perPurchaseLimitNgn", n)} help="No single purchase can be larger than this." />
         <MoneyField label="Ask me before purchases above" value={v.manualApprovalThresholdNgn} onChange={(n) => set("manualApprovalThresholdNgn", n)} help="Larger purchases wait for your approval." />
+        <ApprovalWindow value={v.approvalTtlSeconds} onChange={(n) => set("approvalTtlSeconds", n)} />
         <MoneyField label="Total Borderless can spend this period" value={v.overallAgentLimitNgn} onChange={(n) => set("overallAgentLimitNgn", n)} help="Your own purchases don't count towards this." />
       </Section>
 

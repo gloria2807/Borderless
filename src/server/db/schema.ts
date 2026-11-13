@@ -252,6 +252,8 @@ export const purchases = sqliteTable(
     quoteAmountAtomic: text("quote_amount_atomic"),
     quotePayTo: text("quote_pay_to"),
     quoteExpiresAt: integer("quote_expires_at", { mode: "timestamp_ms" }),
+    /** Wall-clock deadline for the owner to approve a parked purchase (then it expires, unpaid). */
+    approvalExpiresAt: integer("approval_expires_at", { mode: "timestamp_ms" }),
     accountId: text("account_id")
       .notNull()
       .references(() => utilityAccounts.id),

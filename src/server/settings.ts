@@ -23,6 +23,8 @@ export const settingsSchema = z
     dailyAgentBudgetNgn: z.number().int().min(0).max(10_000_000).optional(),
     taskBudgetNgn: z.number().int().min(0).max(10_000_000).optional(),
     reserveNgn: z.number().int().min(0).max(10_000_000).optional(),
+    /** Seconds a parked purchase waits for the owner (10 s for demos, up to a day). */
+    approvalTtlSeconds: z.number().int().min(10).max(86_400).optional(),
     /** Per-utility cap per purchase; 0 or absent = no cap beyond the per-purchase limit. */
     maxPerUtilityNgn: z.record(z.enum(UTILITY_KINDS), z.number().int().min(0).max(1_000_000)).optional(),
   })
@@ -70,6 +72,7 @@ export async function updateSettings(db: Database, householdId: string, input: S
         ...(input.dailyAgentBudgetNgn !== undefined ? { dailyAgentBudgetNgn: input.dailyAgentBudgetNgn } : {}),
         ...(input.taskBudgetNgn !== undefined ? { taskBudgetNgn: input.taskBudgetNgn } : {}),
         ...(input.reserveNgn !== undefined ? { reserveNgn: input.reserveNgn } : {}),
+        ...(input.approvalTtlSeconds !== undefined ? { approvalTtlSeconds: input.approvalTtlSeconds } : {}),
         ...(input.maxPerUtilityNgn !== undefined
           ? { maxPerUtilityNgn: Object.fromEntries(Object.entries(input.maxPerUtilityNgn).filter(([, n]) => n > 0)) }
           : {}),

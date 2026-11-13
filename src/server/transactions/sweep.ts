@@ -11,12 +11,15 @@
 import { and, eq, inArray, lt } from "drizzle-orm";
 import type { Database } from "../db/client";
 import * as s from "../db/schema";
+import { expireApprovals } from "./approvals";
 import { recordEvent } from "./events";
 
 /** A purchase step that has not progressed for this long (wall time) is considered interrupted. */
 export const STALE_AFTER_MS = 3 * 60_000;
 
 export async function sweepInterruptedPurchases(db: Database, householdId: string, now = Date.now()): Promise<number> {
+  // Approval requests past their window are closed first, so they stop blocking new decisions.
+  await expireApprovals(db, householdId, now);
   const cutoff = new Date(now - STALE_AFTER_MS);
   const stale = await db
     .select()

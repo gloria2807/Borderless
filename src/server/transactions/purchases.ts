@@ -9,6 +9,9 @@ import { resolveProviderProduct } from "../providers/registry";
 import { recordEvent } from "./events";
 
 /** Stages that hold the utility "busy" — a new purchase for the same account must wait. */
+/** Used when a household has no explicit approval window. */
+export const DEFAULT_APPROVAL_TTL_SECONDS = 180;
+
 export const OPEN_STAGES: PurchaseStage[] = ["awaiting_approval", "requested", "payment_required", "submitted", "needs_attention"];
 
 export class PolicyDeniedError extends Error {
@@ -117,6 +120,7 @@ export async function createPurchase(db: Database, input: CreatePurchaseInput): 
           idempotencyKey: input.idempotencyKey ?? id,
           initiatedBy: input.initiatedBy,
           stage,
+          approvalExpiresAt: stage === "awaiting_approval" ? new Date(Date.now() + (state.policy.approvalTtlSeconds ?? DEFAULT_APPROVAL_TTL_SECONDS) * 1000) : null,
           paymentStatus: "not_started",
           fulfilmentStatus: "not_started",
           simTime: state.household.simulatedNow,

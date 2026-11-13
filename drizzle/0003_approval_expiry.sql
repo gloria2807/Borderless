@@ -1,0 +1,1 @@
+ALTER TABLE `purchases` ADD `approval_expires_at` integer;

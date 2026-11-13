@@ -25,6 +25,8 @@ export interface PolicyRules {
   perPurchaseLimitNgn: number;
   overallAgentLimitNgn: number;
   manualApprovalThresholdNgn: number;
+  /** How long a parked purchase waits for the owner before it expires unpaid. */
+  approvalTtlSeconds?: number;
   approvedServices: UtilityKind[];
   approvedNetworks: MobileNetwork[];
   approvedProviderIds: string[];

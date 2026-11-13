@@ -44,6 +44,7 @@ export async function loadHousehold(db: Database, householdId: string) {
     perPurchaseLimitNgn: policyRow.perPurchaseLimitNgn,
     overallAgentLimitNgn: policyRow.overallAgentLimitNgn,
     manualApprovalThresholdNgn: policyRow.manualApprovalThresholdNgn,
+    approvalTtlSeconds: policyRow.approvalTtlSeconds,
     approvedServices: policyRow.approvedServices,
     approvedNetworks: policyRow.approvedNetworks,
     approvedProviderIds: policyRow.approvedProviderIds,
