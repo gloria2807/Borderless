@@ -7,6 +7,7 @@
  */
 import type { UtilityKind } from "../db/schema";
 import type { DemoFaultKey } from "./faults";
+import type { MeterProfile } from "../db/schema";
 
 export interface UtilitySeed {
   balance: number;
@@ -40,6 +41,11 @@ export interface ScenarioDefinition {
   providersDown?: string[];
   /** Demo faults switched on by this scenario. */
   faults?: DemoFaultKey[];
+  /**
+   * PROVIDER-SIDE ground truth for the electricity meter: what is really behind unusual use.
+   * Never shown to the agent; only a paid diagnostic reveals it.
+   */
+  meterProfile?: { profile: MeterProfile; magnitude: number };
 }
 
 const BASE_UTILITIES: Record<UtilityKind, UtilitySeed> = {
@@ -132,6 +138,19 @@ export const SCENARIOS: ScenarioDefinition[] = [
     budget: { amountNgn: 15_000, priorSpendNgn: 5_000 },
     faults: ["provider_prompt_injection"],
     utilities: { electricity: { balance: 40, perHour: 0.32 }, airtime: { balance: 60, perHour: 3 }, data: { balance: 2_500, perHour: 22, expiresInHours: 9 * 24 } },
+  },
+  {
+    id: "electricity-surge",
+    name: "Electricity use has tripled",
+    summary: "The meter has been draining at about three times the usual rate for eight hours, and electricity is running low.",
+    expect: "Borderless cannot see why from hourly totals. A paid meter diagnostic can: watch whether it buys one, and how the report changes what it buys.",
+    budget: { amountNgn: 15_000, priorSpendNgn: 5_000 },
+    meterProfile: { profile: "stuck_water_heater", magnitude: 0.68 },
+    utilities: {
+      electricity: { balance: 9, perHour: 0.32, multiplier: 3.1, recentPerHour: 1.0, recentHours: 8 },
+      airtime: { balance: 900, perHour: 3 },
+      data: { balance: 2_500, perHour: 22, expiresInHours: 9 * 24 },
+    },
   },
   {
     id: "authority-revoked",

@@ -34,6 +34,8 @@ const baseSchema = z.object({
   PROVIDER_POWERGRID_PAYTO: z.string().regex(STELLAR_PUBLIC_KEY).optional(),
   PROVIDER_TOPUPHUB_PAYTO: z.string().regex(STELLAR_PUBLIC_KEY).optional(),
   PROVIDER_DATALINK_PAYTO: z.string().regex(STELLAR_PUBLIC_KEY).optional(),
+  PROVIDER_GRIDSENSE_PAYTO: z.string().regex(STELLAR_PUBLIC_KEY).optional(),
+  PROVIDER_METERLAB_PAYTO: z.string().regex(STELLAR_PUBLIC_KEY).optional(),
   AGENT_STELLAR_PUBLIC: z.string().regex(STELLAR_PUBLIC_KEY).optional(),
   // Funding guard: a household treasury grants the agent wallet a capped, expiring allowance.
   TREASURY_STELLAR_PUBLIC: z.string().regex(STELLAR_PUBLIC_KEY).optional(),

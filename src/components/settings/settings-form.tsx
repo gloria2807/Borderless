@@ -23,6 +23,7 @@ export interface SettingsValues {
   dailyAgentBudgetNgn: number;
   taskBudgetNgn: number;
   reserveNgn: number;
+  intelligenceCapNgn: number;
   approvalTtlSeconds: number;
   /** 0 = no separate cap for that utility. */
   maxPerUtilityNgn: Record<Kind, number>;
@@ -155,6 +156,7 @@ export function SettingsForm({ initial, spentNgn }: { initial: SettingsValues; s
       <Section title="Budget allocation" description="How Borderless shares money between days, runs and utilities. Also enforced on the server before signing.">
         <MoneyField label="Borderless can spend per day, up to" value={v.dailyAgentBudgetNgn} onChange={(n) => set("dailyAgentBudgetNgn", n)} help="Resets at midnight, household time." />
         <MoneyField label="Each agent run can spend, up to" value={v.taskBudgetNgn} onChange={(n) => set("taskBudgetNgn", n)} help="A single assessment can't spend more than this, however many utilities need help." />
+        <MoneyField label="Each information purchase, up to" value={v.intelligenceCapNgn} onChange={(n) => set("intelligenceCapNgn", n)} help="For example a paid meter diagnostic. ₦0 stops Borderless from buying information." />
         <MoneyField label="Always keep in reserve" value={v.reserveNgn} onChange={(n) => set("reserveNgn", n)} help="Borderless won't spend the last part of the budget. Your own purchases can." />
         <fieldset>
           <legend className="text-[13px] font-medium text-fg-2">Per-purchase cap by utility</legend>

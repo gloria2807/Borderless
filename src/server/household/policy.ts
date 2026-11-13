@@ -18,7 +18,7 @@
  *   9  The payment wallet holds enough testnet USDC
  *  10  Whether the owner must approve
  */
-import type { MobileNetwork, PaymentStatus, PurchaseStage, UtilityKind } from "../db/schema";
+import type { MobileNetwork, PaymentStatus, PurchaseStage, UtilityKind, ServiceType } from "../db/schema";
 
 export interface PolicyRules {
   autoPurchaseEnabled: boolean;
@@ -34,6 +34,8 @@ export interface PolicyRules {
   dailyAgentBudgetNgn?: number;
   taskBudgetNgn?: number;
   reserveNgn?: number;
+  /** Most the agent may pay for one information service. */
+  intelligenceCapNgn?: number;
   maxPerUtilityNgn?: Partial<Record<UtilityKind, number>>;
 }
 
@@ -122,6 +124,8 @@ export interface PurchaseIntent {
   initiatedBy: "agent" | "owner" | "script";
   /** The owner explicitly approved this specific purchase. */
   ownerApproved?: boolean;
+  /** What is bought: utility credit (default) or an information service. */
+  serviceType?: ServiceType;
 }
 
 /** Facts the caller has verified against the database / chain, fed in as plain data. */
@@ -146,6 +150,7 @@ export type ViolationCode =
   | "quote_invalid"
   | "exceeds_per_purchase_limit"
   | "exceeds_utility_limit"
+  | "exceeds_intelligence_cap"
   | "exceeds_task_budget"
   | "exceeds_daily_budget"
   | "exceeds_budget"
@@ -247,12 +252,18 @@ export function evaluateSpendingAuthority(
   if (amount > policy.perPurchaseLimitNgn) {
     capFails.push({ code: "exceeds_per_purchase_limit", message: `${naira(amount)} is above the ${naira(policy.perPurchaseLimitNgn)} per-purchase limit.` });
   }
-  const utilityCap = policy.maxPerUtilityNgn?.[intent.kind];
+  // Information purchases have their own cap; utility credit has the per-utility cap.
+  const information = (intent.serviceType ?? "utility_topup") !== "utility_topup";
+  const utilityCap = information ? (policy.intelligenceCapNgn ?? 1000) : policy.maxPerUtilityNgn?.[intent.kind];
   if (utilityCap !== undefined && amount > utilityCap) {
-    capFails.push({ code: "exceeds_utility_limit", message: `${naira(amount)} is above the ${naira(utilityCap)} limit for ${intent.kind}.` });
+    capFails.push(
+      information
+        ? { code: "exceeds_intelligence_cap", message: `${naira(amount)} is above the ${naira(utilityCap)} limit for one information purchase.` }
+        : { code: "exceeds_utility_limit", message: `${naira(amount)} is above the ${naira(utilityCap)} limit for ${intent.kind}.` },
+    );
   }
   check(5, "per_request_cap", "Within the per-request cap", capFails.length === 0,
-    capFails.length ? capFails.map((v) => v.message).join(" ") : `${naira(amount)} ≤ ${naira(Math.min(policy.perPurchaseLimitNgn, utilityCap ?? Infinity))}.`, capFails);
+    capFails.length ? capFails.map((v) => v.message).join(" ") : `${naira(amount)} ≤ ${naira(Math.min(policy.perPurchaseLimitNgn, utilityCap ?? Infinity))}${information ? " (information purchase)" : ""}.`, capFails);
 
   // 6 — task budget (agent runs only)
   if (!agentInitiated || !evidence.runId || policy.taskBudgetNgn === undefined) {

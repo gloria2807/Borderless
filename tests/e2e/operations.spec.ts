@@ -139,10 +139,10 @@ test("accounts: each account lists the providers that can serve it", async ({ pa
 test("providers: the network is discoverable, verified, and marks paid endpoints", async ({ page, request }) => {
   await loadScenario(request, "both-low");
   const listing = await (await request.get("/api/providers")).json();
-  expect(listing.providers).toHaveLength(6);
+  expect(listing.providers).toHaveLength(8);
   await page.goto("/providers");
-  await expect(page.getByText("Verified against registry")).toHaveCount(6);
-  await expect(page.getByText("Paid · x402")).toHaveCount(6);
+  await expect(page.getByText("Verified against registry")).toHaveCount(8);
+  await expect(page.getByText("Paid · x402")).toHaveCount(8);
   await page.getByRole("link", { name: "View the published document" }).first().click();
   await expect(page).toHaveURL(/\/api\/providers\/prv_demo_electricity\/service$/);
   await expect(page.locator("body")).toContainText('"paid":true');

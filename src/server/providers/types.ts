@@ -10,7 +10,7 @@ import type { Database } from "../db/client";
 import type { MobileNetwork, UtilityKind } from "../db/schema";
 import type * as s from "../db/schema";
 
-export type Unit = "kWh" | "NGN" | "MB";
+export type Unit = "kWh" | "NGN" | "MB" | "report";
 
 export interface Product {
   /** Unique within its provider. */
@@ -96,6 +96,21 @@ export interface ProviderModule {
   listProducts(): Product[];
   /** Compute the device update for a settled purchase. Pure with respect to the database. */
   fulfil(ctx: FulfilmentContext): FulfilmentOutcome;
+  /**
+   * Information providers only: produce the paid result (e.g. a diagnostic report) for a
+   * settled purchase. Runs only after settlement; never touches the household's devices.
+   */
+  deliver?(ctx: DeliveryContext): Promise<Record<string, unknown>>;
+  /** Information providers only: the paid service's path segment and title. */
+  service?: { slug: string; title: string; releases: string };
+}
+
+export interface DeliveryContext {
+  tx: Tx;
+  accountId: string;
+  simNow: Date;
+  txHash: string;
+  product: Product;
 }
 
 export const round = (n: number, dp = 3) => Math.round(n * 10 ** dp) / 10 ** dp;

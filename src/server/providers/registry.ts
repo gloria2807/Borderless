@@ -7,10 +7,21 @@ import { payToFromEnv } from "../config/env";
 import type { UtilityKind } from "../db/schema";
 import { airtimeProvider, airtimeProviderB } from "./airtime";
 import { dataProvider, dataProviderB } from "./data";
+import { gridSenseDiagnostics, meterLabDiagnostics } from "./diagnostics";
 import { electricityProvider, electricityProviderB } from "./electricity";
 import type { OrderInput, Product, ProviderDefinition, ProviderModule } from "./types";
 
-export const ALL_PROVIDERS: readonly ProviderModule[] = [electricityProvider, electricityProviderB, airtimeProvider, airtimeProviderB, dataProvider, dataProviderB];
+export const ALL_PROVIDERS: readonly ProviderModule[] = [
+  electricityProvider,
+  electricityProviderB,
+  airtimeProvider,
+  airtimeProviderB,
+  dataProvider,
+  dataProviderB,
+  // Information providers (paid meter diagnostics).
+  gridSenseDiagnostics,
+  meterLabDiagnostics,
+];
 
 /** The original (default) provider per utility; household accounts point here by default. */
 export const DEFAULT_PROVIDER: Record<UtilityKind, ProviderModule> = {
@@ -37,8 +48,14 @@ export function requireProvider(id: string): ProviderModule {
   return p;
 }
 
+/** Providers that sell utility CREDIT for a utility (the catalogue the engine buys from). */
 export function providersFor(kind: UtilityKind): ProviderModule[] {
-  return ALL_PROVIDERS.filter((m) => m.definition.kind === kind);
+  return ALL_PROVIDERS.filter((m) => m.definition.category === "utility" && m.definition.kind === kind);
+}
+
+/** Providers that sell INFORMATION about a utility (e.g. meter diagnostics). */
+export function intelligenceProvidersFor(kind: UtilityKind): ProviderModule[] {
+  return ALL_PROVIDERS.filter((m) => m.definition.category === "intelligence" && m.definition.kind === kind);
 }
 
 /** Every product from every provider of a utility (each carries its providerId). */

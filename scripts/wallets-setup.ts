@@ -45,6 +45,8 @@ const WALLETS: WalletSpec[] = [
   { label: "PowerGrid provider", secretVar: "PROVIDER_POWERGRID_SECRET", publicVar: "PROVIDER_POWERGRID_PAYTO", needsUsdc: false },
   { label: "TopUp Hub provider", secretVar: "PROVIDER_TOPUPHUB_SECRET", publicVar: "PROVIDER_TOPUPHUB_PAYTO", needsUsdc: false },
   { label: "DataLink provider", secretVar: "PROVIDER_DATALINK_SECRET", publicVar: "PROVIDER_DATALINK_PAYTO", needsUsdc: false },
+  { label: "GridSense diagnostics", secretVar: "PROVIDER_GRIDSENSE_SECRET", publicVar: "PROVIDER_GRIDSENSE_PAYTO", needsUsdc: false },
+  { label: "MeterLab diagnostics", secretVar: "PROVIDER_METERLAB_SECRET", publicVar: "PROVIDER_METERLAB_PAYTO", needsUsdc: false },
 ];
 
 // ── .env.local handling (preserves unrelated lines) ─────────────────────────

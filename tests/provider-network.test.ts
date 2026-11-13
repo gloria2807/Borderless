@@ -32,9 +32,18 @@ const doc = async (id: string) => (await (await serviceRoute(new Request(`http:/
 describe("registry listing (free)", () => {
   it("lists every registered provider and where it publishes its service document", async () => {
     const body = (await registryRoute().json()) as { providers: RegistryEntry[] };
-    expect(body.providers.map((p) => p.providerId)).toEqual(["prv_demo_electricity", "prv_demo_powergrid", "prv_demo_airtime", "prv_demo_topuphub", "prv_demo_data", "prv_demo_datalink"]);
+    expect(body.providers.map((p) => [p.providerId, p.category])).toEqual([
+      ["prv_demo_electricity", "utility"],
+      ["prv_demo_powergrid", "utility"],
+      ["prv_demo_airtime", "utility"],
+      ["prv_demo_topuphub", "utility"],
+      ["prv_demo_data", "utility"],
+      ["prv_demo_datalink", "utility"],
+      ["prv_demo_gridsense", "intelligence"],
+      ["prv_demo_meterlab", "intelligence"],
+    ]);
     for (const p of body.providers) {
-      expect(p).toMatchObject({ category: "utility", simulated: true, serviceDocument: `/api/providers/${p.providerId}/service` });
+      expect(p).toMatchObject({ simulated: true, serviceDocument: `/api/providers/${p.providerId}/service` });
     }
   });
 });

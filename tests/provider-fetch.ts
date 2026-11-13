@@ -7,6 +7,7 @@
 import { vi } from "vitest";
 import { handleFulfilmentRetry, handleProviderPurchase } from "@/server/providers/purchase-handler";
 import { handleQuoteRequest } from "@/server/providers/quote-handler";
+import { handleServicePurchase } from "@/server/providers/service-handler";
 import { errorResponse, parseProviderId } from "@/server/providers/route-kind";
 import { handleRegistryRequest, handleServiceDocumentRequest } from "@/server/providers/catalog";
 import { db } from "@/server/db/client";
@@ -28,6 +29,18 @@ export function providerFetch(opts: ProviderFetchOptions = {}) {
     if (url.pathname === "/api/providers") {
       calls.push({ kind: "discovery", url: url.pathname, body: null });
       return handleRegistryRequest();
+    }
+    if (url.pathname.startsWith("/api/services/")) {
+      const [, , , serviceProvider, slug] = url.pathname.split("/");
+      calls.push({ kind: "purchase", url: url.pathname, body });
+      const module = parseProviderId(serviceProvider ?? "");
+      if (opts.purchase) return await opts.purchase(new Request(url, init), body ?? {});
+      if (!module) return new Response(JSON.stringify({ code: "unknown_provider" }), { status: 404 });
+      try {
+        return await handleServicePurchase(module, slug ?? "", new Request(url, init));
+      } catch (err) {
+        return errorResponse(err);
+      }
     }
     const kind = parseProviderId(providerId ?? "");
     if (action === "service" && kind) {

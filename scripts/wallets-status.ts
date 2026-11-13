@@ -18,6 +18,8 @@ const wallets: [string, string | undefined][] = [
   ["PowerGrid provider", process.env.PROVIDER_POWERGRID_PAYTO],
   ["TopUp Hub provider", process.env.PROVIDER_TOPUPHUB_PAYTO],
   ["DataLink provider", process.env.PROVIDER_DATALINK_PAYTO],
+  ["GridSense diagnostics", process.env.PROVIDER_GRIDSENSE_PAYTO],
+  ["MeterLab diagnostics", process.env.PROVIDER_METERLAB_PAYTO],
 ];
 
 let problems = 0;

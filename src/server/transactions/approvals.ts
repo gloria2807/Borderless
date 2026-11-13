@@ -125,6 +125,7 @@ export async function approvePurchase(db: Database, purchaseId: string, opts: { 
           amountNgn: p.amountNgn,
           initiatedBy: p.initiatedBy,
           ownerApproved: true,
+          serviceType: p.serviceType,
         },
         state.policy,
         state.budget,

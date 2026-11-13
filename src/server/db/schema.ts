@@ -120,6 +120,8 @@ export const agentPolicies = sqliteTable("agent_policies", {
   taskBudgetNgn: integer("task_budget_ngn").notNull().default(6_000),
   /** Budget the agent must always leave untouched. */
   reserveNgn: integer("reserve_ngn").notNull().default(0),
+  /** Most the agent may pay for one information service (e.g. a meter diagnostic). */
+  intelligenceCapNgn: integer("intelligence_cap_ngn").notNull().default(1000),
   /** Optional per-utility ceiling for a single purchase. JSON Partial<Record<UtilityKind, number>>. */
   maxPerUtilityNgn: text("max_per_utility_ngn", { mode: "json" }).$type<Partial<Record<UtilityKind, number>>>().notNull().default({}),
   /** How long an owner approval request stays open before it lapses (no answer = declined). */
@@ -139,6 +141,8 @@ export const agentPolicies = sqliteTable("agent_policies", {
 // ─── Utilities ────────────────────────────────────────────────────────────────
 
 export const PROVIDER_CATEGORIES = ["utility", "intelligence"] as const;
+export const SERVICE_TYPES = ["utility_topup", "meter_diagnostic"] as const;
+export type ServiceType = (typeof SERVICE_TYPES)[number];
 
 export const utilityProviders = sqliteTable("utility_providers", {
   id: id(),
@@ -269,9 +273,11 @@ export const purchases = sqliteTable(
       .references(() => utilityProviders.id),
     kind: text("kind", { enum: UTILITY_KINDS }).notNull(),
     productCode: text("product_code").notNull(),
+    /** What is bought: utility credit, or an information service about the utility. */
+    serviceType: text("service_type", { enum: SERVICE_TYPES }).notNull().default("utility_topup"),
     amountNgn: integer("amount_ngn").notNull(),
     quantity: real("quantity").notNull(),
-    unit: text("unit", { enum: ["kWh", "NGN", "MB"] }).notNull(),
+    unit: text("unit", { enum: ["kWh", "NGN", "MB", "report"] }).notNull(),
     idempotencyKey: text("idempotency_key").notNull(),
     initiatedBy: text("initiated_by", { enum: ["agent", "owner", "script"] }).notNull(),
     stage: text("stage", { enum: PURCHASE_STAGES }).notNull(),
@@ -375,7 +381,7 @@ export const providerQuotes = sqliteTable(
     productCode: text("product_code").notNull(),
     amountNgn: integer("amount_ngn").notNull(),
     quantity: real("quantity").notNull(),
-    unit: text("unit", { enum: ["kWh", "NGN", "MB"] }).notNull(),
+    unit: text("unit", { enum: ["kWh", "NGN", "MB", "report"] }).notNull(),
     amountAtomic: text("amount_atomic").notNull(),
     asset: text("asset").notNull(),
     payTo: text("pay_to").notNull(),
@@ -402,7 +408,7 @@ export const fulfilments = sqliteTable(
       .notNull()
       .references(() => utilityAccounts.id),
     quantity: real("quantity").notNull(),
-    unit: text("unit", { enum: ["kWh", "NGN", "MB"] }).notNull(),
+    unit: text("unit", { enum: ["kWh", "NGN", "MB", "report"] }).notNull(),
     balanceBefore: real("balance_before").notNull(),
     balanceAfter: real("balance_after").notNull(),
     /** Demo artefact (e.g. a 20-digit demo electricity token). Never valid on a real meter. */
@@ -572,4 +578,22 @@ export const fundingGuards = sqliteTable("funding_guards", {
   revokedAt: integer("revoked_at", { mode: "timestamp_ms" }),
   revokeTxHash: text("revoke_tx_hash"),
   updatedAt: updatedAt(),
+});
+
+/**
+ * PROVIDER-SIDE ground truth for the simulated smart meter (what is really drawing power).
+ * Only diagnostic providers read this, and only after they are paid — agent tools never
+ * do (a test enforces it). The household's free view is hourly meter totals.
+ */
+export const METER_PROFILES = ["stuck_water_heater", "extra_occupancy", "meter_overreading"] as const;
+export type MeterProfile = (typeof METER_PROFILES)[number];
+
+export const meterProfiles = sqliteTable("meter_profiles", {
+  accountId: text("account_id")
+    .primaryKey()
+    .references(() => utilityAccounts.id, { onDelete: "cascade" }),
+  profile: text("profile", { enum: METER_PROFILES }).notNull(),
+  /** Extra load (kWh per hour) the profile adds, or the share the meter over-reads. */
+  magnitude: real("magnitude").notNull(),
+  since: integer("since", { mode: "timestamp_ms" }).notNull(),
 });

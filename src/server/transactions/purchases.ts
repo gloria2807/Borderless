@@ -1,11 +1,11 @@
 import { and, eq, inArray } from "drizzle-orm";
 import type { Database } from "../db/client";
 import * as s from "../db/schema";
-import type { PurchaseStage, UtilityKind } from "../db/schema";
+import type { PurchaseStage, ServiceType, UtilityKind } from "../db/schema";
 import { evaluateSpendingAuthority, type PolicyCheck, type Violation } from "../household/policy";
 import { loadHousehold } from "../household/state";
 import { newId } from "../lib/ids";
-import { resolveProviderProduct } from "../providers/registry";
+import { requireProvider, resolveProviderProduct } from "../providers/registry";
 import { approvalTermsFor, hashTerms } from "./approval-terms";
 import { recordEvent } from "./events";
 
@@ -80,6 +80,7 @@ export async function createPurchase(db: Database, input: CreatePurchaseInput): 
       if (open) throw new PurchaseConflictError(open.id);
 
       const product = resolveProviderProduct(provider.id, input);
+      const serviceType: ServiceType = requireProvider(provider.id).service ? "meter_diagnostic" : "utility_topup";
       const authority = evaluateSpendingAuthority(
         {
           kind: input.kind,
@@ -88,6 +89,7 @@ export async function createPurchase(db: Database, input: CreatePurchaseInput): 
           network: account.network,
           amountNgn: product.amountNgn,
           initiatedBy: input.initiatedBy,
+          serviceType,
         },
         state.policy,
         state.budget,
@@ -119,6 +121,7 @@ export async function createPurchase(db: Database, input: CreatePurchaseInput): 
           providerId: provider.id,
           kind: input.kind,
           productCode: product.code,
+          serviceType,
           amountNgn: product.amountNgn,
           quantity: product.quantity,
           unit: product.unit,

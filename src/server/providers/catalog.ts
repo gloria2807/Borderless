@@ -106,12 +106,26 @@ export async function serviceDocument(db: Database, m: ProviderModule): Promise<
     products: m.listProducts().map((p) => ({ code: p.code, label: p.label, priceNgn: p.amountNgn, quantity: p.quantity, unit: p.unit, validityHours: p.validityHours ?? null })),
     denominations: { minNgn: d.minAmountNgn, maxNgn: d.maxAmountNgn },
     availability: { available: row?.available ?? false, checkedAt: new Date().toISOString() },
-    fulfilment: { releases: RELEASES[d.kind], when: "Only after the x402 payment has settled on Stellar testnet. Simulated: no real utility is delivered." },
-    endpoints: [
-      { name: "service", method: "GET", path: `/api/providers/${d.id}/service`, paid: false, protocol: null, description: "This document." },
-      { name: "quote", method: "POST", path: providerQuotePath(d.id), paid: false, protocol: null, description: "A binding 5-minute quote for one product and recipient. Free; releases nothing." },
-      { name: "purchase", method: "POST", path: providerRoutePath(d.id), paid: true, protocol: "x402", description: "Redeems a quote. Answers HTTP 402 until paid; releases the utility after settlement." },
-    ],
+    fulfilment: m.service
+      ? { releases: m.service.releases, when: "Only after the x402 payment has settled on Stellar testnet. Simulated: generated from simulated smart-meter telemetry." }
+      : { releases: RELEASES[d.kind], when: "Only after the x402 payment has settled on Stellar testnet. Simulated: no real utility is delivered." },
+    endpoints: m.service
+      ? [
+          { name: "service", method: "GET", path: `/api/providers/${d.id}/service`, paid: false, protocol: null, description: "This document." },
+          {
+            name: m.service.slug,
+            method: "POST",
+            path: `/api/services/${d.id}/${m.service.slug}`,
+            paid: true,
+            protocol: "x402",
+            description: `${m.service.title} for one meter. Answers HTTP 402 with the price until paid; releases the report after settlement.`,
+          },
+        ]
+      : [
+          { name: "service", method: "GET", path: `/api/providers/${d.id}/service`, paid: false, protocol: null, description: "This document." },
+          { name: "quote", method: "POST", path: providerQuotePath(d.id), paid: false, protocol: null, description: "A binding 5-minute quote for one product and recipient. Free; releases nothing." },
+          { name: "purchase", method: "POST", path: providerRoutePath(d.id), paid: true, protocol: "x402", description: "Redeems a quote. Answers HTTP 402 until paid; releases the utility after settlement." },
+        ],
     payment: {
       protocol: "x402",
       scheme: "exact",
@@ -153,7 +167,8 @@ export function verifyServiceDocument(expectedProviderId: string, doc: unknown):
   if (d.payment?.asset?.contract !== TESTNET_USDC.contract) problems.push("The published payment asset is not test USDC.");
   const paid = (d.endpoints ?? []).filter((e) => e?.paid);
   if (paid.some((e) => e.protocol !== "x402")) problems.push("A paid endpoint does not use x402.");
-  if (paid.some((e) => typeof e.path !== "string" || !e.path.startsWith(`/api/providers/${expectedProviderId}/`))) problems.push("A paid endpoint is outside the provider's registered address.");
+  const allowed = [`/api/providers/${expectedProviderId}/`, `/api/services/${expectedProviderId}/`];
+  if (paid.some((e) => typeof e.path !== "string" || !allowed.some((prefix) => e.path.startsWith(prefix)))) problems.push("A paid endpoint is outside the provider's registered address.");
   return { verified: problems.length === 0, problems };
 }
 

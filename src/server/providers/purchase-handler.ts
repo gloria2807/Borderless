@@ -130,7 +130,7 @@ function context402Only(request: Request): boolean {
   return !request.headers.get("payment-signature") && !request.headers.get("x-payment");
 }
 
-async function challengeOrError(providerId: string, request: Request, order: PricedOrder): Promise<Response> {
+export async function challengeOrError(providerId: string, request: Request, order: PricedOrder): Promise<Response> {
   const seller = await getSeller(providerId);
   const result = await seller.processHTTPRequest(createRequestContext(request, order));
   if (result.type === "payment-error") return fromInstructions(result.response);
@@ -138,7 +138,7 @@ async function challengeOrError(providerId: string, request: Request, order: Pri
   return json(500, { code: "x402_misconfigured", message: "Payment protection is not active for this route." });
 }
 
-async function settleAndFulfil(
+export async function settleAndFulfil(
   module: ProviderModule,
   request: Request,
   order: PricedOrder,
@@ -213,10 +213,12 @@ async function settleAndFulfil(
     fulfilmentStatus: "pending",
     settledAt: new Date(),
   });
-  await database
-    .update(s.providerQuotes)
-    .set({ redeemedByPurchaseId: order.purchaseId })
-    .where(and(eq(s.providerQuotes.id, order.quoteId), isNull(s.providerQuotes.redeemedByPurchaseId)));
+  if (order.quoteId) {
+    await database
+      .update(s.providerQuotes)
+      .set({ redeemedByPurchaseId: order.purchaseId })
+      .where(and(eq(s.providerQuotes.id, order.quoteId), isNull(s.providerQuotes.redeemedByPurchaseId)));
+  }
 
   // 6. Release the simulated utility.
   const fulfilled = await fulfilSettlement(settlementId, simNow);
@@ -286,7 +288,32 @@ export async function fulfilSettlement(settlementId: string, simNow: Date): Prom
         throw new Error("Simulated provider outage during fulfilment (demo fault injection)");
       }
 
-      const product = requireProvider(stl.providerId).resolveProduct(order);
+      const module = requireProvider(stl.providerId);
+      const product = module.resolveProduct(order);
+      if (module.deliver) {
+        // Information service: release the paid result. The household's devices are untouched.
+        const result = await module.deliver({ tx: tx as unknown as Tx, accountId: order.accountId, simNow, txHash: stl.txHash, product });
+        const [bal] = await tx.select().from(s.utilityBalances).where(eq(s.utilityBalances.accountId, order.accountId));
+        await tx.insert(s.fulfilments).values({
+          id: newId("ful"),
+          purchaseId: stl.purchaseId,
+          settlementId: stl.id,
+          providerId: stl.providerId,
+          accountId: order.accountId,
+          quantity: product.quantity,
+          unit: product.unit,
+          balanceBefore: bal?.balance ?? 0,
+          balanceAfter: bal?.balance ?? 0,
+          demoToken: null,
+          details: { result },
+          fulfilledAt: new Date(),
+        });
+        await tx
+          .update(s.providerSettlements)
+          .set({ fulfilmentStatus: "fulfilled", lastError: null, updatedAt: new Date() })
+          .where(eq(s.providerSettlements.id, settlementId));
+        return;
+      }
       const outcome = await applyToDevice(tx, stl.providerId, product, order.accountId, stl.txHash, simNow);
       await tx.insert(s.fulfilments).values({
         id: newId("ful"),
@@ -346,7 +373,7 @@ async function findSettlement(providerId: string, purchaseId: string) {
   return row;
 }
 
-async function buildReceipt(settlementId: string): Promise<ProviderReceipt> {
+export async function buildReceipt(settlementId: string): Promise<ProviderReceipt> {
   const database = db();
   const [stl] = await database.select().from(s.providerSettlements).where(eq(s.providerSettlements.id, settlementId));
   if (!stl) throw new Error("Settlement not found");
@@ -357,7 +384,9 @@ async function buildReceipt(settlementId: string): Promise<ProviderReceipt> {
   return {
     receiptId: `rcp_${stl.id.slice(4)}`,
     simulated: true,
-    disclaimer: "Simulated utility released by a demo provider. Paid with Stellar testnet USDC, which has no real-world value.",
+    disclaimer: requireProvider(stl.providerId).service
+      ? "Simulated information service from a demo provider. Paid with Stellar testnet USDC, which has no real-world value."
+      : "Simulated utility released by a demo provider. Paid with Stellar testnet USDC, which has no real-world value.",
     provider: { id: provider.id, name: provider.name, kind: order.kind },
     purchaseId: stl.purchaseId,
     recipient: { identifier: order.accountIdentifier, network: order.network ?? null },

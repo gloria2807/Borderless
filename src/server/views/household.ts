@@ -92,7 +92,7 @@ export async function getUtilities(householdId: string, simNow: Date): Promise<U
       .select({ purchase: s.purchases, receipt: s.receipts })
       .from(s.purchases)
       .leftJoin(s.receipts, eq(s.receipts.purchaseId, s.purchases.id))
-      .where(and(eq(s.purchases.accountId, account.id), eq(s.purchases.fulfilmentStatus, "fulfilled")))
+      .where(and(eq(s.purchases.accountId, account.id), eq(s.purchases.fulfilmentStatus, "fulfilled"), eq(s.purchases.serviceType, "utility_topup")))
       .orderBy(desc(s.purchases.createdAt))
       .limit(6);
     const history: LastPurchaseView[] = fulfilled.map(({ purchase, receipt }) => {

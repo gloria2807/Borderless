@@ -127,6 +127,10 @@ export async function seedDemoHousehold(db: Database, scenarioId: string = DEFAU
     data: { scenarioId: scenario.id },
     simTime: now,
   });
+  // Provider-side ground truth for the meter (only paid diagnostics read it).
+  if (scenario.meterProfile) {
+    await db.insert(s.meterProfiles).values({ accountId: DEMO_ACCOUNTS.electricity, profile: scenario.meterProfile.profile, magnitude: scenario.meterProfile.magnitude, since: new Date(now.getTime() - 12 * 3_600_000) });
+  }
   return scenario;
 }
 
@@ -134,7 +138,7 @@ export async function seedDemoHousehold(db: Database, scenarioId: string = DEFAU
 export async function wipeAll(db: Database): Promise<void> {
   await db.run(sql`PRAGMA foreign_keys = OFF`);
   for (const table of [
-    s.activityEvents, s.receipts, s.fulfilments, s.providerQuotes, s.providerSettlements, s.payments, s.purchases,
+    s.meterProfiles, s.activityEvents, s.receipts, s.fulfilments, s.providerQuotes, s.providerSettlements, s.payments, s.purchases,
     s.agentRunEvents, s.agentRuns, s.agentDecisions, s.usageRecords, s.utilityBalances, s.utilityAccounts, s.agentPolicies,
     s.householdBudgets, s.householdMembers, s.households, s.utilityProviders, s.demoScenarios, s.demoFaults,
   ]) {

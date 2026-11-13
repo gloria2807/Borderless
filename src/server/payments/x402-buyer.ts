@@ -16,7 +16,7 @@ import { createEd25519Signer, InsufficientBalanceError, SimulationFailedError, T
 import { ExactStellarScheme } from "@x402/stellar/exact/client";
 import { z } from "zod";
 import { agentSecret, emptyWalletSecret, env } from "../config/env";
-import { providerPayTo } from "../providers/registry";
+import { providerPayTo, requireProvider } from "../providers/registry";
 import type { Database } from "../db/client";
 import * as s from "../db/schema";
 import type { PaymentStatus, PurchaseStage, FulfilmentStatus } from "../db/schema";
@@ -178,6 +178,7 @@ export async function executePurchase(db: Database, purchaseId: string, options:
         amountNgn: purchase.amountNgn,
         initiatedBy: purchase.initiatedBy,
         ownerApproved: purchase.initiatedBy === "owner" || undefined,
+        serviceType: purchase.serviceType,
       },
       state.policy,
       state.budget,
@@ -199,7 +200,12 @@ export async function executePurchase(db: Database, purchaseId: string, options:
     };
     const registryPayTo = providerPayTo(purchase.providerId);
     const fairAtomic = ngnToTestnetUsdcAtomic(purchase.amountNgn, env().DEMO_NGN_PER_TESTNET_USDC).toString();
-    let quote: { quoteId: string; amountAtomic: string; payTo: string; expiresAt: Date } | null =
+    const serviceModule = requireProvider(purchase.providerId).service;
+    // Information services have no quote: the provider's 402 must ask for exactly its published
+    // price (our own conversion of the purchase's NGN amount), paid to its registered wallet.
+    let quote: { quoteId: string; amountAtomic: string; payTo: string; expiresAt: Date } | null = serviceModule
+      ? { quoteId: "", amountAtomic: fairAtomic, payTo: registryPayTo, expiresAt: new Date(Date.now() + 3_600_000) }
+      :
       purchase.quoteId && purchase.quoteAmountAtomic && purchase.quotePayTo && purchase.quoteExpiresAt && purchase.quoteExpiresAt.getTime() > Date.now() + 15_000
         ? { quoteId: purchase.quoteId, amountAtomic: purchase.quoteAmountAtomic, payTo: purchase.quotePayTo, expiresAt: purchase.quoteExpiresAt }
         : null;
@@ -233,7 +239,10 @@ export async function executePurchase(db: Database, purchaseId: string, options:
     if (quote.amountAtomic !== fairAtomic) {
       throw new StepError("quote_price_mismatch", "The quote's testnet USDC amount does not match the NGN price at the demo rate. Nothing was signed.", "no");
     }
-    const order = { ...request, purchaseId, quoteId: quote.quoteId };
+    const order = serviceModule
+      ? { accountIdentifier: account.identifier, purchaseId, productCode: purchase.productCode }
+      : { ...request, purchaseId, quoteId: quote.quoteId };
+    const paidPath = serviceModule ? `/api/services/${purchase.providerId}/${serviceModule.slug}` : providerRoutePath(purchase.providerId);
     const expectedAtomic = BigInt(quote.amountAtomic);
     const expectedPayTo = quote.payTo;
     const isExpected = (r: PaymentRequirements) =>
@@ -244,15 +253,15 @@ export async function executePurchase(db: Database, purchaseId: string, options:
       r.amount === expectedAtomic.toString();
 
     // 3. Request the utility. Expect HTTP 402.
-    const url = new URL(providerRoutePath(purchase.providerId), env().APP_BASE_URL).toString();
+    const url = new URL(paidPath, env().APP_BASE_URL).toString();
     const init = (headers: Record<string, string> = {}): RequestInit => ({
       method: "POST",
       headers: { "content-type": "application/json", accept: "application/json", ...headers },
       body: JSON.stringify(order),
     });
 
-    await options.onStage?.({ stage: "requesting_payment", detail: `POST ${providerRoutePath(purchase.providerId)} (expecting HTTP 402)` });
-    await event({ category: "payment", type: "provider.requested", severity: "info", title: `Requested ${purchase.kind} from ${provider.name}`, detail: `POST ${providerRoutePath(purchase.providerId)}` });
+    await options.onStage?.({ stage: "requesting_payment", detail: `POST ${paidPath} (expecting HTTP 402)` });
+    await event({ category: "payment", type: "provider.requested", severity: "info", title: serviceModule ? `Requested a ${serviceModule.title.toLowerCase()} from ${provider.name}` : `Requested ${purchase.kind} from ${provider.name}`, detail: `POST ${paidPath}` });
     let first: Response;
     try {
       first = await doFetch(url, { ...init(), signal: AbortSignal.timeout(30_000) });
@@ -354,6 +363,7 @@ export async function executePurchase(db: Database, purchaseId: string, options:
         amountNgn: purchase.amountNgn,
         initiatedBy: purchase.initiatedBy,
         ownerApproved: purchase.initiatedBy === "owner" || undefined,
+        serviceType: purchase.serviceType,
       },
       state.policy,
       state.budget,

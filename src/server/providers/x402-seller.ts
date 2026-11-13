@@ -27,8 +27,12 @@ export const providerRoutePath = (providerId: string) => `/api/providers/${provi
 export const providerRetryPath = (providerId: string) => `/api/providers/${providerId}/fulfilment/retry`;
 export const providerQuotePath = (providerId: string) => `/api/providers/${providerId}/quote`;
 
-/** The order as the seller prices it: the validated body plus the price from its quote. */
-export type PricedOrder = ProviderOrder & { quoteAmountAtomic: string };
+/**
+ * The order as the seller prices it: the validated body plus the price. For utilities the
+ * price comes from the redeemed quote; for information services it is the service's fixed
+ * published price (the HTTP 402 itself is the price — there is no quote step).
+ */
+export type PricedOrder = Omit<ProviderOrder, "quoteId"> & { quoteId?: string; quoteAmountAtomic: string };
 
 /** Atomic testnet USDC for a provider's product at the household demo rate. */
 export function quoteOrderAtomic(providerId: string, order: Pick<OrderInput, "amountNgn" | "productCode">): bigint {
@@ -70,8 +74,9 @@ export async function getSeller(providerId: string): Promise<x402HTTPResourceSer
     const provider = module.definition;
     const payTo = providerPayTo(providerId);
     const resourceServer = new x402ResourceServer(createFacilitatorClient()).register(e.STELLAR_NETWORK, new ExactStellarScheme());
+    const paidPath = module.service ? `/api/services/${providerId}/${module.service.slug}` : providerRoutePath(providerId);
     const server = new x402HTTPResourceServer(resourceServer, {
-      [`POST ${providerRoutePath(providerId)}`]: {
+      [`POST ${paidPath}`]: {
         accepts: {
           scheme: "exact",
           network: e.STELLAR_NETWORK,
@@ -85,7 +90,7 @@ export async function getSeller(providerId: string): Promise<x402HTTPResourceSer
             return { asset: TESTNET_USDC.contract, amount: amount.toString() };
           },
         },
-        description: `${provider.name} — simulated ${provider.kind} purchase (Stellar testnet demo)`,
+        description: module.service ? `${provider.name} — simulated ${module.service.title.toLowerCase()} (Stellar testnet demo)` : `${provider.name} — simulated ${provider.kind} purchase (Stellar testnet demo)`,
         mimeType: "application/json",
         serviceName: provider.name,
         unpaidResponseBody: (context) => {
@@ -95,7 +100,9 @@ export async function getSeller(providerId: string): Promise<x402HTTPResourceSer
             contentType: "application/json",
             body: {
               code: "payment_required",
-              message: "Pay with Stellar testnet USDC via x402 to release this simulated utility.",
+              message: module.service
+                ? `Pay with Stellar testnet USDC via x402 to receive this ${module.service.title.toLowerCase()} (simulated).`
+                : "Pay with Stellar testnet USDC via x402 to release this simulated utility.",
               order: { purchaseId: order.purchaseId, quoteId: order.quoteId, product: product.label, amountNgn: product.amountNgn },
               simulated: true,
             },

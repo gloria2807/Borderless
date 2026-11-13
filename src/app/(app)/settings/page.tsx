@@ -34,6 +34,7 @@ export default async function SettingsPage() {
           dailyAgentBudgetNgn: o.policy.dailyAgentBudgetNgn ?? 0,
           taskBudgetNgn: o.policy.taskBudgetNgn ?? 0,
           reserveNgn: o.policy.reserveNgn ?? 0,
+          intelligenceCapNgn: o.policy.intelligenceCapNgn ?? 1000,
           approvalTtlSeconds: o.policy.approvalTtlSeconds ?? 180,
           maxPerUtilityNgn: { electricity: o.policy.maxPerUtilityNgn?.electricity ?? 0, airtime: o.policy.maxPerUtilityNgn?.airtime ?? 0, data: o.policy.maxPerUtilityNgn?.data ?? 0 },
         }}

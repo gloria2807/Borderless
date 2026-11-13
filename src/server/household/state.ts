@@ -51,6 +51,7 @@ export async function loadHousehold(db: Database, householdId: string) {
     dailyAgentBudgetNgn: policyRow.dailyAgentBudgetNgn,
     taskBudgetNgn: policyRow.taskBudgetNgn,
     reserveNgn: policyRow.reserveNgn,
+    intelligenceCapNgn: policyRow.intelligenceCapNgn,
     maxPerUtilityNgn: policyRow.maxPerUtilityNgn,
   };
   const budget: BudgetRules = {

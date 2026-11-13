@@ -27,6 +27,7 @@ export function AuthorityPanel({ o }: { o: HouseholdOverview }) {
         {p.dailyAgentBudgetNgn !== undefined && <KeyValue label="Per day, up to" mono>{naira(p.dailyAgentBudgetNgn)}</KeyValue>}
         {p.taskBudgetNgn !== undefined && <KeyValue label="Per run, up to" mono>{naira(p.taskBudgetNgn)}</KeyValue>}
         {!!p.reserveNgn && <KeyValue label="Kept in reserve" mono>{naira(p.reserveNgn)}</KeyValue>}
+        {p.intelligenceCapNgn !== undefined && <KeyValue label="Per information purchase" mono>{naira(p.intelligenceCapNgn)}</KeyValue>}
         {Object.entries(p.maxPerUtilityNgn ?? {}).map(([k, n]) => (
           <KeyValue key={k} label={`${UTILITY_NAMES[k as keyof typeof UTILITY_NAMES]} cap`} mono>{naira(n ?? 0)}</KeyValue>
         ))}

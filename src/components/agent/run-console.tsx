@@ -9,6 +9,7 @@ import { useApiAction } from "@/components/ui/interactive";
 import { atomicToDecimal, naira, shortAddress, shortHash, UTILITY_NAMES } from "@/lib/format";
 import { FULFILMENT_STATUS, PAYMENT_STATUS, STAGE, type Tone } from "@/lib/status";
 import type { RunEventDTO, RunPurchaseView, RunView } from "@/server/views/runs";
+import { DiagnosticReport, isDiagnosticReport } from "./diagnostic-report";
 
 // ── Stages ──────────────────────────────────────────────────────────────────
 
@@ -59,6 +60,8 @@ const TOOL_LABEL: Record<string, string> = {
   get_allocation_recommendation: "Asked the allocation engine",
   request_quote: "Requested a quote",
   propose_purchase: "Dry-ran the spending rules",
+  discover_information_services: "Discovered information services",
+  buy_information: "Bought information",
   purchase_utility: "Purchase requested",
   inspect_transaction: "Inspected the transaction",
   verify_fulfilment: "Verified fulfilment",
@@ -103,6 +106,10 @@ function toolSummary(tool: string, r: Obj): string | null {
       return r.verified ? `Verified: device balance ${r.device_balance_now}` : `Not verified (${r.provider_reports})`;
     case "reassess_household":
       return arr(r.utilities).map((u) => `${utility(u.utility)} ${hrs(u.hours_of_service_left)}`).join(" · ");
+    case "discover_information_services":
+      return arr(r.services).map((x) => `${x.name} ${naira(Number(x.price_ngn ?? 0))}${x.verified ? "" : " (unverified)"}`).join(" · ") || "No information services found";
+    case "buy_information":
+      return r.status === "completed" ? `Paid; report released: ${String(obj(r.report).summary ?? "")}` : `${String(r.status).replace(/_/g, " ")}${r.reason ? `: ${r.reason}` : r.failure ? `: ${r.failure}` : ""}`;
     case "finish":
       return null;
     default:
@@ -234,7 +241,15 @@ function buildItems(events: RunEventDTO[]): Item[] {
         items.push({ ...base, title: e.paymentStatus === "failed" ? "Payment stopped — not charged" : "Payment outcome unknown", body: e.reason, tone: "critical" });
         break;
       default:
-        if (e.type.startsWith("purchase.")) {
+        if (e.type === "purchase.completed" && isDiagnosticReport(result.report)) {
+          items.push({
+            ...base,
+            title: "Diagnostic report received",
+            body: (result.report as { summary?: string }).summary ?? null,
+            tone: "positive",
+            details: <DiagnosticReport report={result.report} />,
+          });
+        } else if (e.type.startsWith("purchase.")) {
           const done = e.type === "purchase.completed";
           items.push({
             ...base,

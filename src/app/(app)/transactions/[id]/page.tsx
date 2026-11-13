@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { ArrowLeft, ArrowUpRight, CircleCheck, CircleDashed, CircleX, Zap } from "lucide-react";
 import { ActivityTimeline } from "@/components/agent/activity-timeline";
 import { ApprovalPrompt, AttentionPrompt } from "@/components/agent/actions";
+import { DiagnosticReport, isDiagnosticReport } from "@/components/agent/diagnostic-report";
 import { cn, KeyValue, Panel, SimulatedTag, StatusPill, TestnetTag } from "@/components/ui/primitives";
 import { atomicToDecimal, fullTimestamp, maskMsisdn, meterId, naira, NETWORK_NAMES, quantity, UTILITY_NAMES } from "@/lib/format";
 import { FULFILMENT_STATUS, PAYMENT_STATUS, STAGE, type Tone } from "@/lib/status";
@@ -52,6 +53,8 @@ export default async function TransactionPage({ params }: { params: Promise<{ id
   const { purchase: p, payment, receipt, events, decisionReasoning, decisionLines } = detail;
   const pay = PAYMENT_STATUS[p.paymentStatus]!;
   const ful = FULFILMENT_STATUS[p.fulfilmentStatus]!;
+  const releasedResult = (receipt as { fulfilment?: { details?: { result?: unknown } } } | null)?.fulfilment?.details?.result;
+  const report = isDiagnosticReport(releasedResult) ? releasedResult : null;
   const stage = STAGE[p.stage]!;
   const r = receipt as {
     receiptId?: string;
@@ -93,10 +96,10 @@ export default async function TransactionPage({ params }: { params: Promise<{ id
           body={p.paymentStatus === "failed" && p.failureMessage ? p.failureMessage : pay.hint}
         />
         <StateBlock
-          title="Utility fulfilment"
+          title={report ? "Service fulfilment" : "Utility fulfilment"}
           tag={<SimulatedTag />}
           tone={ful.tone}
-          heading={p.fulfilmentStatus === "fulfilled" ? "Utility fulfilment confirmed" : ful.label}
+          heading={p.fulfilmentStatus === "fulfilled" ? (report ? "Report released" : "Utility fulfilment confirmed") : ful.label}
           body={p.fulfilmentStatus === "failed" && p.failureMessage ? p.failureMessage : ful.hint}
         />
       </div>
@@ -131,7 +134,20 @@ export default async function TransactionPage({ params }: { params: Promise<{ id
           </Panel>
 
           <Panel title="Fulfilment receipt" description="Issued by the demo provider after settlement" actions={<SimulatedTag />}>
-            {r?.fulfilment?.status === "fulfilled" ? (
+            {r?.fulfilment?.status === "fulfilled" && report ? (
+              <>
+                <dl className="mb-4 divide-y divide-line-soft">
+                  <KeyValue label="Receipt" mono>{r.receiptId}</KeyValue>
+                  <KeyValue label="About">{recipient}</KeyValue>
+                  {r.fulfilment.fulfilledAt && <KeyValue label="Released at" mono>{fullTimestamp(r.fulfilment.fulfilledAt)}</KeyValue>}
+                </dl>
+                <DiagnosticReport report={report} />
+                <details className="mt-4 rounded-md border border-line-soft bg-bg-2">
+                  <summary className="cursor-pointer px-3 py-2 text-2xs font-medium text-fg-2 hover:text-fg">Provider receipt (JSON)</summary>
+                  <pre className="mono max-h-80 overflow-auto px-3 pb-3 text-2xs leading-relaxed text-fg-2">{JSON.stringify(receipt, null, 2)}</pre>
+                </details>
+              </>
+            ) : r?.fulfilment?.status === "fulfilled" ? (
               <>
                 <dl className="divide-y divide-line-soft">
                   <KeyValue label="Receipt" mono>{r.receiptId}</KeyValue>
