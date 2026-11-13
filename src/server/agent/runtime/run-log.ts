@@ -5,7 +5,7 @@
  * is always something the backend actually recorded — never a front-end animation.
  */
 import { EventEmitter } from "node:events";
-import { and, eq, gt, inArray } from "drizzle-orm";
+import { and, desc, eq, gt, inArray } from "drizzle-orm";
 import type { Database } from "../../db/client";
 import * as s from "../../db/schema";
 import type { RunStage, UtilityKind } from "../../db/schema";
@@ -118,12 +118,25 @@ export async function listRunEvents(db: Database, runId: string, afterSeq = 0): 
  * Runs left "running" by a previous process (crash / restart) can never finish: mark them
  * interrupted. Their purchases are reconciled separately by the purchase sweep.
  */
-export async function markOrphanedRunsInterrupted(db: Database, householdId: string, liveRunIds: Set<string>): Promise<number> {
+export async function markOrphanedRunsInterrupted(db: Database, householdId: string, liveRunIds: Set<string>, opts: { quietForMs?: number } = {}): Promise<number> {
   const running = await db
     .select({ id: s.agentRuns.id })
     .from(s.agentRuns)
     .where(and(eq(s.agentRuns.householdId, householdId), inArray(s.agentRuns.status, ["running"])));
-  const orphans = running.filter((r) => !liveRunIds.has(r.id));
+  let orphans = running.filter((r) => !liveRunIds.has(r.id));
+  if (opts.quietForMs) {
+    // Only runs that have also gone silent: a run with a recent event may belong to another
+    // worker or still be starting up.
+    const cutoff = Date.now() - opts.quietForMs;
+    const quiet: typeof orphans = [];
+    for (const r of orphans) {
+      const [last] = await db.select({ at: s.agentRunEvents.at }).from(s.agentRunEvents).where(eq(s.agentRunEvents.runId, r.id)).orderBy(desc(s.agentRunEvents.seq)).limit(1);
+      const [run] = await db.select({ startedAt: s.agentRuns.startedAt }).from(s.agentRuns).where(eq(s.agentRuns.id, r.id));
+      const lastActivity = Math.max(last?.at.getTime() ?? 0, run?.startedAt.getTime() ?? 0);
+      if (lastActivity < cutoff) quiet.push(r);
+    }
+    orphans = quiet;
+  }
   for (const r of orphans) {
     await appendRunEvent(db, r.id, { stage: "finished", type: "run.interrupted", reason: "The server restarted while this run was in progress. Any purchase it started is reconciled separately." });
     await finishRun(db, r.id, { status: "interrupted", error: "Interrupted by a server restart." });

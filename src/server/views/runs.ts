@@ -7,7 +7,7 @@ import { env } from "../config/env";
 import { db } from "../db/client";
 import * as s from "../db/schema";
 import type { RunStage, UtilityKind } from "../db/schema";
-import { aiAvailable } from "../agent/runtime/executor";
+import { aiAvailable, reconcileOrphanedRuns } from "../agent/runtime/executor";
 import { DEFAULT_TASK } from "../agent/runtime/executor";
 import { listRunEvents, type RunEventRow } from "../agent/runtime/run-log";
 import { providerById, requireProvider } from "../providers/registry";
@@ -46,6 +46,8 @@ export interface RunPurchaseView {
   fulfilmentStatus: string;
   failureCode: string | null;
   approvalExpiresAt: string | null;
+  approvalTermsHash: string | null;
+  approvalTerms: { amountAtomic: string; payTo: string; recipient: string } | null;
   txHash: string | null;
 }
 
@@ -77,6 +79,7 @@ function summary(r: typeof s.agentRuns.$inferSelect, purchaseCount: number): Run
 
 export async function getRecentRuns(householdId: string, limit = 10): Promise<RunSummaryView[]> {
   const database = db();
+  await reconcileOrphanedRuns(database, householdId);
   const rows = await database.select().from(s.agentRuns).where(eq(s.agentRuns.householdId, householdId)).orderBy(desc(s.agentRuns.startedAt)).limit(limit);
   if (!rows.length) return [];
   const ps = await database.select({ runId: s.purchases.runId }).from(s.purchases).where(inArray(s.purchases.runId, rows.map((r) => r.id)));
@@ -87,6 +90,7 @@ export async function getRunView(householdId: string, runId: string): Promise<Ru
   const database = db();
   // Close approval requests whose window has passed, so the card never offers a stale one.
   await expireApprovals(database, householdId);
+  await reconcileOrphanedRuns(database, householdId);
   const [run] = await database.select().from(s.agentRuns).where(eq(s.agentRuns.id, runId));
   if (!run || run.householdId !== householdId) return null;
   const rows = await database
@@ -106,6 +110,8 @@ export async function getRunView(householdId: string, runId: string): Promise<Ru
     fulfilmentStatus: p.fulfilmentStatus,
     failureCode: p.failureCode,
     approvalExpiresAt: p.approvalExpiresAt?.toISOString() ?? null,
+    approvalTermsHash: p.approvalTermsHash,
+    approvalTerms: p.approvalTerms ? { amountAtomic: p.approvalTerms.amountAtomic, payTo: p.approvalTerms.payTo, recipient: p.approvalTerms.recipient } : null,
     txHash: pay?.txHash ?? null,
   }));
   return {

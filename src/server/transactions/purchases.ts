@@ -6,12 +6,13 @@ import { evaluateSpendingAuthority, type PolicyCheck, type Violation } from "../
 import { loadHousehold } from "../household/state";
 import { newId } from "../lib/ids";
 import { resolveProviderProduct } from "../providers/registry";
+import { approvalTermsFor, hashTerms } from "./approval-terms";
 import { recordEvent } from "./events";
 
-/** Stages that hold the utility "busy" — a new purchase for the same account must wait. */
 /** Used when a household has no explicit approval window. */
 export const DEFAULT_APPROVAL_TTL_SECONDS = 180;
 
+/** Stages that hold the utility "busy" — a new purchase for the same account must wait. */
 export const OPEN_STAGES: PurchaseStage[] = ["awaiting_approval", "requested", "payment_required", "submitted", "needs_attention"];
 
 export class PolicyDeniedError extends Error {
@@ -99,6 +100,10 @@ export async function createPurchase(db: Database, input: CreatePurchaseInput): 
 
       const id = newId("pur");
       const stage: PurchaseStage = authority.outcome === "require_approval" ? "awaiting_approval" : "requested";
+      const terms =
+        stage === "awaiting_approval"
+          ? approvalTermsFor({ purchaseId: id, kind: input.kind, providerId: provider.id, productCode: product.code, amountNgn: product.amountNgn, recipient: account.identifier, quote: input.quote })
+          : null;
       const [row] = await tx
         .insert(s.purchases)
         .values({
@@ -120,6 +125,8 @@ export async function createPurchase(db: Database, input: CreatePurchaseInput): 
           idempotencyKey: input.idempotencyKey ?? id,
           initiatedBy: input.initiatedBy,
           stage,
+          approvalTerms: terms,
+          approvalTermsHash: terms ? hashTerms(terms) : null,
           approvalExpiresAt: stage === "awaiting_approval" ? new Date(Date.now() + (state.policy.approvalTtlSeconds ?? DEFAULT_APPROVAL_TTL_SECONDS) * 1000) : null,
           paymentStatus: "not_started",
           fulfilmentStatus: "not_started",

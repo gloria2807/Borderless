@@ -184,7 +184,9 @@ export async function payAndLog(db: Database, runId: string, purchaseId: string,
     ...buyer,
     runId,
     onStage: async (st: BuyerStage) => {
-      if (st.stage === "failed") {
+      if (st.stage === "funding") {
+        await log({ stage: "requesting_payment", type: `funding.${st.outcome}`, utility, purchaseId, reason: st.detail, txHash: st.txHash, result: { amount_usdc: st.amountAtomic ? formatAtomic(st.amountAtomic) : null } });
+      } else if (st.stage === "failed") {
         await log({ stage: "requesting_payment", type: "payment.failed", utility, purchaseId, paymentStatus: st.charged === "no" ? "failed" : "unknown", reason: st.detail, error: st.code });
       } else if (st.stage === "checking_policy") {
         await log({ stage: "checking_policy", type: "policy.evaluated", utility, purchaseId, decision: st.checks.some((c) => c.status === "fail") ? "deny" : "allow", reason: st.detail, result: { checks: st.checks, http_402: { amount_usdc: formatAtomic(st.amountAtomic), pay_to: st.payTo, network: "stellar:testnet", asset: "USDC (testnet)" } } });

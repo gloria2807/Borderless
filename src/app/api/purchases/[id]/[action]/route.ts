@@ -11,7 +11,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
-export const POST = action(async (_request, ctx) => {
+export const POST = action(async (request, ctx) => {
   const { id, action: verb } = await ctx.params;
   if (!id || !/^pur_[0-9a-z]+$/.test(id)) return fail(400, "invalid_id", "Invalid purchase id.");
   const database = db();
@@ -20,7 +20,11 @@ export const POST = action(async (_request, ctx) => {
 
   switch (verb) {
     case "approve":
-      await approvePurchase(database, id);
+      {
+        const body = (await request.json().catch(() => ({}))) as { termsHash?: unknown };
+        const termsHash = typeof body.termsHash === "string" && /^[0-9a-f]{64}$/.test(body.termsHash) ? body.termsHash : undefined;
+        await approvePurchase(database, id, { termsHash });
+      }
       if (p.runId) {
         await appendRunEvent(database, p.runId, { stage: "awaiting_approval", type: "approval.granted", utility: p.kind, purchaseId: id, decision: "approved", reason: "The owner approved. Paying now." });
         return ok((await payAndLog(database, p.runId, id, p.kind)).result);

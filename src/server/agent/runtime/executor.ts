@@ -54,6 +54,18 @@ export function activeRunFor(householdId: string): string | null {
 }
 
 /** Start a run. Returns immediately with the run ID and a promise for its outcome. */
+/**
+ * A run marked running that this process is not executing was cut off by a restart or
+ * crash: close it as interrupted (its purchases are reconciled by the purchase sweep).
+ * Safe to call from read paths; it never touches a run that is genuinely in progress.
+ */
+/** Silence after which a run no process owns is treated as cut off. */
+export const ORPHAN_QUIET_MS = 15_000;
+
+export async function reconcileOrphanedRuns(db: Database, householdId: string): Promise<number> {
+  return markOrphanedRunsInterrupted(db, householdId, new Set(active.values()), { quietForMs: ORPHAN_QUIET_MS });
+}
+
 export async function startAgentRun(db: Database, opts: StartRunOptions): Promise<{ runId: string; done: Promise<PlannerOutcome> }> {
   const existing = active.get(opts.householdId);
   if (existing) throw new AgentRunConflictError(existing);

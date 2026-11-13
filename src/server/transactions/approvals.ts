@@ -10,6 +10,7 @@ import { evaluateSpendingAuthority } from "../household/policy";
 import { loadHousehold } from "../household/state";
 import { recordEvent } from "./events";
 import { PolicyDeniedError } from "./purchases";
+import { approvalTermsFor, changedFields, type ApprovalTerms } from "./approval-terms";
 import { appendRunEvent } from "../agent/runtime/run-log";
 
 export class ApprovalStateError extends Error {
@@ -18,6 +19,50 @@ export class ApprovalStateError extends Error {
 
 export class ApprovalExpiredError extends Error {
   readonly code = "approval_expired";
+}
+
+/** The approval did not name the terms it approves (approval binding). */
+export class ApprovalTermsRequiredError extends Error {
+  readonly code = "approval_terms_required";
+}
+
+/** What the owner approved is not what would be paid now. */
+export class ApprovalTermsChangedError extends Error {
+  readonly code = "approval_terms_changed";
+  constructor(
+    message: string,
+    readonly changed: string[] = [],
+  ) {
+    super(message);
+  }
+}
+
+/**
+ * Check an approval against the frozen terms. Returns null when it may proceed. If the
+ * terms that would apply now differ from the frozen ones, the request is closed unpaid
+ * so the agent re-decides with fresh prices.
+ */
+async function checkApprovalBinding(db: Database, p: typeof s.purchases.$inferSelect, termsHash: string | undefined): Promise<void> {
+  if (!p.approvalTerms || !p.approvalTermsHash) return; // purchases parked before binding existed
+  if (!termsHash) throw new ApprovalTermsRequiredError("Approve the exact terms shown: the approval must include their hash.");
+  if (termsHash !== p.approvalTermsHash) {
+    throw new ApprovalTermsChangedError("These are not the terms of this request. Refresh to see what you are approving.");
+  }
+  const [account] = await db.select().from(s.utilityAccounts).where(eq(s.utilityAccounts.id, p.accountId));
+  let current: ApprovalTerms | null = null;
+  try {
+    current = approvalTermsFor({ purchaseId: p.id, kind: p.kind, providerId: p.providerId, productCode: p.productCode, amountNgn: p.amountNgn, recipient: account?.identifier ?? "" });
+  } catch {
+    current = null; // product withdrawn or payee no longer configured
+  }
+  const changed = current ? changedFields(p.approvalTerms, current) : ["product"];
+  if (changed.length === 0) return;
+  await db
+    .update(s.purchases)
+    .set({ stage: "cancelled", failureCode: "approval_terms_changed", failureMessage: `The terms changed before approval (${changed.join(", ")}). Nothing was paid.`, updatedAt: new Date() })
+    .where(and(eq(s.purchases.id, p.id), eq(s.purchases.stage, "awaiting_approval")));
+  if (p.runId) await appendRunEvent(db, p.runId, { stage: "awaiting_approval", type: "approval.terms_changed", utility: p.kind, purchaseId: p.id, decision: "cancelled", reason: `The terms changed before approval (${changed.join(", ")}). Nothing was paid; Borderless will re-decide.`, result: { approved: p.approvalTerms, current } });
+  throw new ApprovalTermsChangedError(`The terms changed since this request was made (${changed.join(", ")}). Nothing was paid; ask Borderless to reassess.`, changed);
 }
 
 /**
@@ -56,12 +101,13 @@ export async function expireApprovals(db: Database, householdId: string, now = D
   return expired;
 }
 
-export async function approvePurchase(db: Database, purchaseId: string): Promise<void> {
+export async function approvePurchase(db: Database, purchaseId: string, opts: { termsHash?: string } = {}): Promise<void> {
   const [parked] = await db.select().from(s.purchases).where(eq(s.purchases.id, purchaseId));
   if (parked?.stage === "awaiting_approval" && parked.approvalExpiresAt && parked.approvalExpiresAt.getTime() <= Date.now()) {
     await expireApprovals(db, parked.householdId);
     throw new ApprovalExpiredError("This approval request has expired. Nothing was paid; ask Borderless to reassess.");
   }
+  if (parked?.stage === "awaiting_approval") await checkApprovalBinding(db, parked, opts.termsHash);
   await db.transaction(
     async (tx) => {
       const txDb = tx as unknown as Database;

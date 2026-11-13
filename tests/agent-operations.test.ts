@@ -162,7 +162,7 @@ describe("approval expiry", () => {
   it("approval still cannot override hard limits", async () => {
     const p = await parked();
     await database.update(s.agentPolicies).set({ perPurchaseLimitNgn: 1000 });
-    await expect(approvePurchase(database, p.id)).rejects.toBeInstanceOf(PolicyDeniedError);
+    await expect(approvePurchase(database, p.id, { termsHash: p.approvalTermsHash! })).rejects.toBeInstanceOf(PolicyDeniedError);
   });
 });
 

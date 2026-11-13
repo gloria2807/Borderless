@@ -28,6 +28,7 @@ import { providerQuotePath, providerRetryPath, providerRoutePath } from "../prov
 import { recordEvent } from "../transactions/events";
 import { confirmOnHorizon, explorerTxUrl } from "./horizon";
 import { readUsdcWallet, type WalletBalanceReader } from "./wallet";
+import { treasuryFunding, type FundingSource } from "./funding-guard";
 import { formatAtomic, ngnToTestnetUsdcAtomic, TESTNET_USDC } from "./pricing";
 import { quantity } from "../../lib/format";
 
@@ -52,7 +53,8 @@ export type BuyerStage =
   | { stage: "signing"; detail: string }
   | { stage: "settling"; detail: string }
   | { stage: "verifying_fulfilment"; detail: string; txHash: string | null }
-  | { stage: "failed"; detail: string; code: string; charged: "no" | "yes" | "unknown" };
+  | { stage: "failed"; detail: string; code: string; charged: "no" | "yes" | "unknown" }
+  | { stage: "funding"; detail: string; outcome: "topped_up" | "refused"; amountAtomic: string | null; txHash: string | null };
 
 export interface BuyerOptions {
   fetchImpl?: typeof fetch;
@@ -64,6 +66,11 @@ export interface BuyerOptions {
   runId?: string;
   /** Receives payment-lifecycle checkpoints (agent run event log). */
   onStage?: (s: BuyerStage) => void | Promise<void>;
+  /**
+   * Funding guard top-up source. Defaults to the treasury allowance when the live wallet
+   * reader is used; tests inject their own (or none).
+   */
+  funding?: FundingSource | null;
 }
 
 /** Minimal shape of a provider quote; anything else is rejected. */
@@ -287,6 +294,14 @@ export async function executePurchase(db: Database, purchaseId: string, options:
         "no",
       );
     }
+    const approved = purchase.approvalTerms;
+    if (approved && (offered.amount !== approved.amountAtomic || offered.payTo !== approved.payTo || offered.asset !== approved.asset || offered.network !== approved.network)) {
+      throw new StepError(
+        "approval_terms_mismatch",
+        `The provider asked for ${formatAtomic(offered.amount)} USDC to ${offered.payTo.slice(0, 6)}…, but the owner approved ${formatAtomic(approved.amountAtomic)} USDC to ${approved.payTo.slice(0, 6)}…. Nothing was signed.`,
+        "no",
+      );
+    }
     await event({
       category: "payment",
       type: "payment.required",
@@ -304,6 +319,26 @@ export async function executePurchase(db: Database, purchaseId: string, options:
       const wallet = await readUsdcWallet(payer);
       if (wallet && !wallet.trustline) throw new StepError("trustline_missing", "The payment wallet has no testnet USDC trustline. Nothing was signed or charged.", "no");
       balance = wallet?.balanceAtomic ?? null;
+    }
+
+    // Funding guard: if the agent wallet is short, draw a top-up from the household treasury
+    // within its on-chain allowance (Stellar enforces the cap and expiry), then re-read.
+    const funding = options.funding === undefined ? (options.walletBalance ? null : treasuryFunding) : options.funding;
+    const required = BigInt(offered.amount);
+    if (funding && balance !== null && balance < required) {
+      try {
+        const draw = await funding.ensureFloat(required, balance);
+        if (draw) {
+          const detail = `Drew ${formatAtomic(draw.amountAtomic)} test USDC from the household treasury under the Funding guard allowance (transfer_from, enforced by Stellar).`;
+          await event({ category: "payment", type: "funding.topped_up", severity: "info", title: "Agent wallet topped up from the treasury", detail, data: { amountAtomic: draw.amountAtomic.toString(), txHash: draw.txHash } });
+          await options.onStage?.({ stage: "funding", outcome: "topped_up", detail, amountAtomic: draw.amountAtomic.toString(), txHash: draw.txHash });
+          balance = options.walletBalance ? await options.walletBalance(payer) : ((await readUsdcWallet(payer))?.balanceAtomic ?? null);
+        }
+      } catch (err) {
+        const detail = err instanceof Error ? err.message : String(err);
+        await event({ category: "payment", type: "funding.refused", severity: "warning", title: "Treasury top-up refused", detail });
+        await options.onStage?.({ stage: "funding", outcome: "refused", detail, amountAtomic: null, txHash: null });
+      }
     }
     const finalCheck = evaluateSpendingAuthority(
       {

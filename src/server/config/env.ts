@@ -35,6 +35,11 @@ const baseSchema = z.object({
   PROVIDER_TOPUPHUB_PAYTO: z.string().regex(STELLAR_PUBLIC_KEY).optional(),
   PROVIDER_DATALINK_PAYTO: z.string().regex(STELLAR_PUBLIC_KEY).optional(),
   AGENT_STELLAR_PUBLIC: z.string().regex(STELLAR_PUBLIC_KEY).optional(),
+  // Funding guard: a household treasury grants the agent wallet a capped, expiring allowance.
+  TREASURY_STELLAR_PUBLIC: z.string().regex(STELLAR_PUBLIC_KEY).optional(),
+  SOROBAN_RPC_URL: z.string().url().default("https://soroban-testnet.stellar.org"),
+  /** When the agent wallet is short before a payment, top it up to this many testnet USDC. */
+  FUNDING_GUARD_FLOAT_TARGET_USDC: z.coerce.number().positive().max(1000).default(1),
   // AI planner (OpenAI). The API key itself is read lazily by openaiApiKey().
   OPENAI_MODEL: z.string().min(1).default("gpt-5.4-mini"),
   AGENT_REASONING_EFFORT: z.enum(["minimal", "low", "medium", "high"]).default("low"),
@@ -77,6 +82,15 @@ export function agentSecret(): string {
     );
   }
   return secret;
+}
+
+/**
+ * The household treasury secret (Funding guard). Demo only: in a real deployment the owner
+ * holds this key and signs the allowance in their own wallet. Never sent to the browser.
+ */
+export function treasurySecret(): string | null {
+  const secret = process.env.TREASURY_STELLAR_SECRET;
+  return secret && STELLAR_SECRET_KEY.test(secret) ? secret : null;
 }
 
 /** OpenAI key for the AI planner. Server-only; never sent to the browser or logged. */

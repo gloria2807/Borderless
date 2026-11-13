@@ -2,6 +2,7 @@
  * Creates and prepares the dedicated Stellar TESTNET wallets Borderless needs.
  *
  *  - Agent payer wallet: Friendbot XLM, USDC trustline, testnet USDC (via a testnet DEX swap).
+ *  - Household treasury (Funding guard): Friendbot XLM, USDC trustline, 5 testnet USDC.
  *  - One receiving wallet per demo provider: Friendbot XLM + USDC trustline.
  *
  * Idempotent: existing keys in .env.local are reused; funded accounts are not re-funded.
@@ -29,10 +30,13 @@ interface WalletSpec {
   secretVar: string;
   publicVar: string;
   needsUsdc: boolean;
+  /** Testnet USDC to hold (defaults to --usdc-target). */
+  usdcTarget?: number;
 }
 
 const WALLETS: WalletSpec[] = [
   { label: "Agent payer", secretVar: "AGENT_STELLAR_SECRET", publicVar: "AGENT_STELLAR_PUBLIC", needsUsdc: true },
+  { label: "Household treasury", secretVar: "TREASURY_STELLAR_SECRET", publicVar: "TREASURY_STELLAR_PUBLIC", needsUsdc: true, usdcTarget: 5 },
   { label: "Electricity provider", secretVar: "PROVIDER_ELECTRICITY_SECRET", publicVar: "PROVIDER_ELECTRICITY_PAYTO", needsUsdc: false },
   { label: "Airtime provider", secretVar: "PROVIDER_AIRTIME_SECRET", publicVar: "PROVIDER_AIRTIME_PAYTO", needsUsdc: false },
   { label: "Data provider", secretVar: "PROVIDER_DATA_SECRET", publicVar: "PROVIDER_DATA_PAYTO", needsUsdc: false },
@@ -165,8 +169,9 @@ async function main() {
 
     if (spec.needsUsdc) {
       const current = usdcBalance(account) ?? 0;
-      if (current < USDC_TARGET) {
-        const needed = Number((USDC_TARGET - current).toFixed(7));
+      const target = spec.usdcTarget ?? USDC_TARGET;
+      if (current < target) {
+        const needed = Number((target - current).toFixed(7));
         process.stdout.write(`  ${spec.label}: swapping testnet XLM for ${needed} testnet USDC on the testnet DEX… `);
         const spent = await acquireUsdc(kp, needed);
         account = await horizon.loadAccount(kp.publicKey());

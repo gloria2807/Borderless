@@ -5,6 +5,7 @@ import { CircleAlert, RefreshCw, ScanSearch, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/primitives";
 import { ConfirmButton, useApiAction } from "@/components/ui/interactive";
 import { naira, UTILITY_NAMES } from "@/lib/format";
+import { ApprovalTermsLine } from "@/components/agent/run-console";
 
 type RunResult = { headline: string; outcome: string; purchases: { stage: string }[]; awaitingApproval: string[] };
 
@@ -35,6 +36,8 @@ export function RunAgentButton({ variant = "primary" }: { variant?: "primary" | 
 }
 
 interface PendingPurchase {
+  approvalTermsHash?: string | null;
+  approvalTerms?: { amountAtomic: string; payTo: string; recipient: string } | null;
   id: string;
   kind: "electricity" | "airtime" | "data";
   label: string;
@@ -53,6 +56,7 @@ export function ApprovalPrompt({ p }: { p: PendingPurchase }) {
           Borderless wants to buy {p.label} for <span className="mono">{naira(p.amountNgn)}</span>
         </p>
         <p className="text-[13px] text-fg-2">It's above your approval threshold, so nothing is paid until you approve.</p>
+        {p.approvalTerms && <ApprovalTermsLine t={p.approvalTerms} hash={p.approvalTermsHash ?? null} />}
       </div>
       <div className="flex gap-2">
         <Button size="sm" variant="ghost" disabled={pending} onClick={() => run(`/api/purchases/${p.id}/decline`, {}, { success: () => ({ title: "Purchase declined", body: "Nothing was paid." }) })}>
@@ -63,7 +67,7 @@ export function ApprovalPrompt({ p }: { p: PendingPurchase }) {
           variant="primary"
           loading={pending}
           onClick={() =>
-            run<{ stage: string }>(`/api/purchases/${p.id}/approve`, {}, {
+            run<{ stage: string }>(`/api/purchases/${p.id}/approve`, { body: { termsHash: p.approvalTermsHash ?? undefined } }, {
               success: (d) => (d.stage === "completed" ? { title: "Approved and paid", body: `${UTILITY_NAMES[p.kind]} delivered to the virtual device.` } : { title: "Approved", body: "See the transaction for the payment outcome." }),
             })
           }

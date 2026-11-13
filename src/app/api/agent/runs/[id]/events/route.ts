@@ -1,4 +1,5 @@
 import { eq } from "drizzle-orm";
+import { reconcileOrphanedRuns } from "@/server/agent/runtime/executor";
 import { listRunEvents, runBus, type RunEventRow } from "@/server/agent/runtime/run-log";
 import { DEMO_HOUSEHOLD, fail } from "@/server/api";
 import { db } from "@/server/db/client";
@@ -21,6 +22,8 @@ export async function GET(request: Request, ctx: { params: Promise<{ id: string 
   const { id } = await ctx.params;
   if (!/^run_[0-9a-z]+$/.test(id)) return fail(400, "invalid_id", "Invalid run id.");
   const database = db();
+  // A run cut off by a restart is closed first, so the stream ends instead of hanging.
+  await reconcileOrphanedRuns(database, DEMO_HOUSEHOLD);
   const [run] = await database.select().from(agentRuns).where(eq(agentRuns.id, id));
   if (!run || run.householdId !== DEMO_HOUSEHOLD) return fail(404, "not_found", "Run not found.");
 

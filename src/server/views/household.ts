@@ -278,6 +278,9 @@ export async function getPurchases(householdId: string, opts: { ids?: string[]; 
     simTime: p.simTime.toISOString(),
     createdAt: p.createdAt.toISOString(),
     decisionId: p.decisionId,
+    approvalExpiresAt: p.approvalExpiresAt?.toISOString() ?? null,
+    approvalTermsHash: p.approvalTermsHash,
+    approvalTerms: p.approvalTerms ? { amountAtomic: p.approvalTerms.amountAtomic, payTo: p.approvalTerms.payTo, recipient: p.approvalTerms.recipient } : null,
   }));
 }
 

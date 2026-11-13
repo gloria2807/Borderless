@@ -254,6 +254,9 @@ export const purchases = sqliteTable(
     quoteExpiresAt: integer("quote_expires_at", { mode: "timestamp_ms" }),
     /** Wall-clock deadline for the owner to approve a parked purchase (then it expires, unpaid). */
     approvalExpiresAt: integer("approval_expires_at", { mode: "timestamp_ms" }),
+    /** Exact terms the owner is asked to approve, and their SHA-256 (approval binding). */
+    approvalTerms: text("approval_terms", { mode: "json" }).$type<import("../transactions/approval-terms").ApprovalTerms>(),
+    approvalTermsHash: text("approval_terms_hash"),
     accountId: text("account_id")
       .notNull()
       .references(() => utilityAccounts.id),
@@ -544,5 +547,25 @@ export const demoScenarios = sqliteTable("demo_scenarios", {
 export const demoFaults = sqliteTable("demo_faults", {
   key: text("key").primaryKey(),
   enabled: integer("enabled", { mode: "boolean" }).notNull().default(false),
+  updatedAt: updatedAt(),
+});
+
+/**
+ * Funding guard: the household treasury's on-chain allowance to the agent wallet
+ * (USDC Stellar Asset Contract `approve`). Stellar enforces the cap and expiry; this row
+ * records what was granted so the UI can show it. The amount left is read on-chain.
+ */
+export const fundingGuards = sqliteTable("funding_guards", {
+  householdId: text("household_id")
+    .primaryKey()
+    .references(() => households.id),
+  treasury: text("treasury").notNull(),
+  spender: text("spender").notNull(),
+  capAtomic: text("cap_atomic").notNull(),
+  expirationLedger: integer("expiration_ledger").notNull(),
+  grantedAt: integer("granted_at", { mode: "timestamp_ms" }).notNull(),
+  grantTxHash: text("grant_tx_hash").notNull(),
+  revokedAt: integer("revoked_at", { mode: "timestamp_ms" }),
+  revokeTxHash: text("revoke_tx_hash"),
   updatedAt: updatedAt(),
 });

@@ -10,6 +10,7 @@ const ISSUER = "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5";
 
 const wallets: [string, string | undefined][] = [
   ["Agent payer", process.env.AGENT_STELLAR_PUBLIC],
+  ["Household treasury", process.env.TREASURY_STELLAR_PUBLIC],
   ["Electricity provider", process.env.PROVIDER_ELECTRICITY_PAYTO],
   ["Airtime provider", process.env.PROVIDER_AIRTIME_PAYTO],
   ["Data provider", process.env.PROVIDER_DATA_PAYTO],

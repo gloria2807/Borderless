@@ -132,7 +132,7 @@ describe("approval flow", () => {
     const calledUrls = fetchImpl.mock.calls.map(([url]) => String(url));
     expect(calledUrls.some((u) => u.includes(`/api/providers/${parked!.providerId}/purchase`))).toBe(false);
 
-    await approvePurchase(database, id);
+    await approvePurchase(database, id, { termsHash: parked!.approvalTermsHash! });
     expect((await database.select().from(s.purchases).where(eq(s.purchases.id, id)))[0]!.stage).toBe("requested");
   });
 
@@ -146,6 +146,7 @@ describe("approval flow", () => {
   it("approval cannot override hard limits that changed since", async () => {
     const r = await runAgent(database, DEMO_HOUSEHOLD_ID, { execute: false });
     await database.update(s.agentPolicies).set({ perPurchaseLimitNgn: 500 });
-    await expect(approvePurchase(database, r.awaitingApproval[0]!)).rejects.toThrow(/per-purchase limit/);
+    const [p] = await database.select().from(s.purchases).where(eq(s.purchases.id, r.awaitingApproval[0]!));
+    await expect(approvePurchase(database, p!.id, { termsHash: p!.approvalTermsHash! })).rejects.toThrow(/per-purchase limit/);
   });
 });

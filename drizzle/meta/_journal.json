@@ -29,6 +29,20 @@
       "when": 1794566582424,
       "tag": "0003_approval_expiry",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1794567896427,
+      "tag": "0004_approval_terms",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1794568146609,
+      "tag": "0005_funding_guard",
+      "breakpoints": true
     }
   ]
 }

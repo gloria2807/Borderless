@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { Check, ChevronRight, CircleAlert, ExternalLink, Radio, ShieldCheck, TimerOff } from "lucide-react";
 import { Button, cn, Spinner, StatusPill, TestnetTag } from "@/components/ui/primitives";
 import { useApiAction } from "@/components/ui/interactive";
-import { naira, shortHash, UTILITY_NAMES } from "@/lib/format";
+import { atomicToDecimal, naira, shortAddress, shortHash, UTILITY_NAMES } from "@/lib/format";
 import { FULFILMENT_STATUS, PAYMENT_STATUS, STAGE, type Tone } from "@/lib/status";
 import type { RunEventDTO, RunPurchaseView, RunView } from "@/server/views/runs";
 
@@ -226,6 +226,10 @@ function buildItems(events: RunEventDTO[]): Item[] {
       case "payment.verifying_fulfilment":
         items.push({ ...base, title: { "payment.requesting_payment": "Requested the purchase (expecting HTTP 402)", "payment.signing": "Signing the payment", "payment.settling": "Settling on Stellar testnet", "payment.verifying_fulfilment": "Settled — confirming and verifying" }[e.type]!, body: e.reason, tone: "progress" });
         break;
+      case "funding.topped_up":
+      case "funding.refused":
+        items.push({ ...base, title: e.type === "funding.topped_up" ? "Funding guard: wallet topped up from the treasury" : "Funding guard: top-up refused", body: e.reason, tone: e.type === "funding.topped_up" ? "info" : "warning" });
+        break;
       case "payment.failed":
         items.push({ ...base, title: e.paymentStatus === "failed" ? "Payment stopped — not charged" : "Payment outcome unknown", body: e.reason, tone: "critical" });
         break;
@@ -295,6 +299,22 @@ function useCountdown(deadline: string | null): number | null {
   return deadline ? Math.max(0, Math.ceil((Date.parse(deadline) - now) / 1000)) : null;
 }
 
+/** The exact payment the owner is approving, and the fingerprint of those terms. */
+export function ApprovalTermsLine({ t, hash }: { t: { amountAtomic: string; payTo: string; recipient: string }; hash: string | null }) {
+  return (
+    <p className="mt-1 text-2xs text-fg-3">
+      Pays exactly <span className="mono text-fg-2">{atomicToDecimal(t.amountAtomic)} test USDC</span> to <span className="mono text-fg-2" title={t.payTo}>{shortAddress(t.payTo)}</span> for{" "}
+      <span className="mono text-fg-2">{t.recipient}</span>
+      {hash && (
+        <>
+          {" "}· terms <span className="mono" title={hash}>{hash.slice(0, 8)}</span>
+        </>
+      )}
+      . Anything different is refused before signing.
+    </p>
+  );
+}
+
 export function ApprovalCard({ p }: { p: RunPurchaseView }) {
   const { run, pending } = useApiAction();
   const left = useCountdown(p.approvalExpiresAt);
@@ -320,6 +340,7 @@ export function ApprovalCard({ p }: { p: RunPurchaseView }) {
           <p className="text-[13px] text-fg-2" aria-live="polite">
             {expired ? "This request expired. Nothing was paid." : <>It&apos;s above your approval threshold. Nothing is paid unless you approve. Expires in <span className="mono">{mmss}</span>.</>}
           </p>
+          {p.approvalTerms && !expired && <ApprovalTermsLine t={p.approvalTerms} hash={p.approvalTermsHash} />}
         </div>
         <div className="flex gap-2">
           <Button size="sm" variant="ghost" disabled={pending || expired} onClick={() => run(`/api/purchases/${p.id}/decline`, {}, { success: () => ({ title: "Purchase declined", body: "Nothing was paid." }), errorTitle: "Couldn't decline" })}>
@@ -331,7 +352,7 @@ export function ApprovalCard({ p }: { p: RunPurchaseView }) {
             loading={pending}
             disabled={expired}
             onClick={() =>
-              run<{ stage: string }>(`/api/purchases/${p.id}/approve`, {}, {
+              run<{ stage: string }>(`/api/purchases/${p.id}/approve`, { body: { termsHash: p.approvalTermsHash ?? undefined } }, {
                 success: (d) => (d.stage === "completed" ? { title: "Approved and paid", body: `${UTILITY_NAMES[p.kind]} delivered to the virtual device.` } : { title: "Approved", body: "See the timeline for the payment outcome." }),
                 errorTitle: "Couldn't approve",
               })

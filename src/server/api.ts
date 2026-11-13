@@ -9,7 +9,7 @@ import { z } from "zod";
 import { AgentBusyError } from "./agent/run";
 import { HouseholdNotFoundError } from "./household/state";
 import { ProductError } from "./providers/types";
-import { ApprovalExpiredError, ApprovalStateError } from "./transactions/approvals";
+import { ApprovalExpiredError, ApprovalStateError, ApprovalTermsChangedError, ApprovalTermsRequiredError } from "./transactions/approvals";
 import { PolicyDeniedError, PurchaseConflictError } from "./transactions/purchases";
 import { ConfigurationError } from "./config/env";
 
@@ -45,6 +45,8 @@ export function handleError(err: unknown): Response {
   if (err instanceof AgentBusyError) return fail(409, err.code, err.message);
   if (err instanceof ApprovalStateError) return fail(409, err.code, err.message);
   if (err instanceof ApprovalExpiredError) return fail(410, err.code, err.message);
+  if (err instanceof ApprovalTermsRequiredError) return fail(400, err.code, err.message);
+  if (err instanceof ApprovalTermsChangedError) return fail(409, err.code, err.message, { changed: err.changed });
   if (err instanceof ProductError) return fail(422, err.code, err.message);
   if (err instanceof HouseholdNotFoundError) return fail(404, err.code, err.message);
   if (err instanceof ConfigurationError) return fail(503, err.code, err.message);

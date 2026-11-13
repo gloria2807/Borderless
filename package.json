@@ -23,6 +23,7 @@
     "demo:purchase": "tsx scripts/demo-purchase.ts",
     "demo:providers": "tsx scripts/demo-providers.ts",
     "demo:recovery": "tsx scripts/demo-failure-recovery.ts",
+    "demo:funding-guard": "tsx scripts/demo-funding-guard.ts",
     "demo:agent": "tsx scripts/demo-agent.ts",
     "agent:dry-run": "tsx scripts/agent-dry-run.ts",
     "agent:run": "tsx scripts/agent-run.ts"
