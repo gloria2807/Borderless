@@ -41,11 +41,11 @@ Task → the AI agent observes the household (real state) → forecasts → comp
 
 ## Quick start
 
-**Prerequisites:** Node.js 22.23.4 or later (developed on Node 24), pnpm 10, and internet access to Stellar testnet. An OpenAI API key with credit is needed for the AI agent; everything else (including a deterministic planner) works without one.
+**Prerequisites:** Node.js 22.23.4 or later (developed on Node 24), pnpm 10, and internet access to Stellar testnet. A Gemini API key (default) or an OpenAI API key is needed for the AI agent; everything else (including a deterministic planner) works without one.
 
 ```bash
 pnpm install
-cp .env.example .env.local     # add OPENAI_API_KEY here for the AI agent
+cp .env.example .env.local     # add GEMINI_API_KEY (or OPENAI_API_KEY) for the AI agent
 pnpm wallets:setup             # creates and funds the testnet wallets, writes keys to .env.local
 pnpm db:reset                  # creates the SQLite database and loads the default demo household
 pnpm dev                       # http://localhost:3000
@@ -66,7 +66,7 @@ Secrets are written only to `.env.local` (git-ignored) and are never printed. `p
 
 ## Running the demo
 
-Open **Demo controls** (sidebar, or **Demo** on mobile), pick a scenario and load it. Then open **Agent → Agent operations**, choose **AI agent** (or **Deterministic** without an OpenAI key) and press **Start run**. The run page streams every step as the backend records it.
+Open **Demo controls** (sidebar, or **Demo** on mobile), pick a scenario and load it. Then open **Agent → Agent operations**, choose **AI agent** (or **Deterministic** without a model key) and press **Start run**. The run page streams every step as the backend records it.
 
 Each scenario only sets the starting state. Outcomes come from the real agent, policy engine and payment flow; nothing is scripted.
 
@@ -101,14 +101,14 @@ Resetting a scenario resets the **simulated** household only. Testnet transactio
 
 **Runtime** ([`runtime/`](src/server/agent/runtime)): a background run per household, with a persisted, ordered event log and a Server-Sent Events stream.
 
-- **AI planner** ([`planner-openai.ts`](src/server/agent/runtime/planner-openai.ts)): OpenAI (default `gpt-5.4-mini`, configurable) runs a server-side tool-use loop with strict JSON schemas, a step cap, a per-call timeout and a whole-run deadline. The UI shows the model's stated next steps and tool calls — never fabricated chain-of-thought. A model outage (timeout, rate limit, no credit, auth) stops the run safely and says so.
+- **AI planner** ([`planner-openai.ts`](src/server/agent/runtime/planner-openai.ts)): **Gemini** (default `gemini-3.5-flash`, through Google's OpenAI-compatible endpoint) or OpenAI (`gpt-5.4-mini`), both via the OpenAI SDK, runs a server-side tool-use loop with strict JSON schemas, a step cap, a per-call timeout and a whole-run deadline. The UI shows the model's stated next steps and tool calls — never fabricated chain-of-thought. A model outage (timeout, rate limit, no credit, auth) stops the run safely and says so. A typical run is 10–15 steps; because each step resends the conversation, expect roughly 60–90k input tokens and about 1k output tokens per run.
 - **Deterministic planner** ([`planner-deterministic.ts`](src/server/agent/runtime/planner-deterministic.ts)): no AI. Uses the same tools, policy and payment path, following the allocation engine. If a provider fails before money moves, it re-decides without that provider and tries the next-best option once. Labelled as such in the UI.
 - **Tools** ([`tools.ts`](src/server/agent/runtime/tools.ts)), all reading real application state: `observe_household`, `inspect_utility` (forecast, confidence, history, assumptions), `inspect_budget`, `discover_providers`, `compare_offers`, `get_allocation_recommendation` (advisory; includes every option considered and why each was rejected), `request_quote`, `propose_purchase` (dry run of the rules), `purchase_utility`, `inspect_transaction`, `verify_fulfilment`, `reassess_household`, `finish`. Arguments are re-validated with Zod regardless of the schema the model saw.
 - **Necessity guard:** code refuses an agent purchase of a utility with plenty of service left, or one flagged for unusual usage.
 - **Agent Operations UI:** start a run with a task, watch the live stage stepper and execution timeline, expand details, approve inline. Refresh-safe: the page replays the stored log and the stream resumes after the last event (`Last-Event-ID`).
 
 ```bash
-APP_BASE_URL=http://localhost:3000 pnpm agent:run                         # AI (if a key is set)
+APP_BASE_URL=http://localhost:3000 pnpm agent:run                         # AI (Gemini if its key is set)
 APP_BASE_URL=http://localhost:3000 pnpm agent:run --mode deterministic --scenario provider-outage
 ```
 
@@ -227,7 +227,7 @@ src/
 scripts/  tests/  tests/e2e/  drizzle/  docs/
 ```
 
-**Stack:** Next.js 16, React 19, TypeScript, Tailwind CSS 4, Drizzle ORM on SQLite (`@libsql/client`), Zod 4, `@x402/*` 2.30, `@stellar/stellar-sdk` 17, OpenAI SDK, Vitest, Playwright + axe-core.
+**Stack:** Next.js 16, React 19, TypeScript, Tailwind CSS 4, Drizzle ORM on SQLite (`@libsql/client`), Zod 4, `@x402/*` 2.30, `@stellar/stellar-sdk` 17, OpenAI SDK (used for both Gemini and OpenAI), Vitest, Playwright + axe-core.
 
 **Data model** ([`schema.ts`](src/server/db/schema.ts)) adds to the original household tables: `agent_runs`, `agent_run_events` (append-only, ordered), `provider_quotes`, `funding_guards`, and on `purchases` the run, quote binding, approval deadline and approval terms/hash. Purchases keep three separate status fields: lifecycle `stage`, `payment_status`, `fulfilment_status`.
 
@@ -266,7 +266,7 @@ E2E_LIVE=1 pnpm test:e2e  # adds the full live browser journey (spends test USDC
 
 - **Unit and integration** (temporary SQLite databases, in-process provider endpoints, scripted model): policy order and every check; decision engine, forecasting and confidence; options and rejection reasons; multi-provider choice and outage fallback; quotes (expiry, reuse, tampering); x402 requirement validation (wrong payee, amount, asset, network, scheme, decoy options); settlement and fulfilment ordering; idempotency and duplicate payments; approvals (binding, expiry, hard limits); Funding guard top-up planning and refusal; SSE replay, resume and live forwarding; restart recovery; model timeout and outages; prompt injection with an obedient scripted model; every demo scenario.
 - **End-to-end** (production build on port 3100, own database): core journeys, the live run console and refresh safety, policy details, approval countdown/decline/expiry, transaction search, accounts, scenario loading, axe-core WCAG 2.1 AA on every page (including a run page), keyboard focus, mobile layout.
-- **Live testnet**: `demo:providers`, `demo:funding-guard`, `demo:recovery`, `agent:run`, and `E2E_LIVE=1`.
+- **Live testnet**: `demo:providers`, `demo:funding-guard`, `demo:recovery`, `agent:run` (deterministic and AI with Gemini), and `E2E_LIVE=1`.
 
 ---
 
@@ -282,8 +282,9 @@ All configuration is server-side and validated at startup ([`env.ts`](src/server
 | `STELLAR_RPC_URL`, `STELLAR_HORIZON_URL`, `SOROBAN_RPC_URL` | Public testnet endpoints | RPC and Horizon |
 | `X402_FACILITATOR_URL` / `X402_FACILITATOR_API_KEY` | `https://x402.org/facilitator` / — | x402 facilitator |
 | `DEMO_NGN_PER_TESTNET_USDC` | `100000` | Fixed demo pricing, not an exchange rate |
-| `OPENAI_API_KEY` | — | AI planner (server-only) |
-| `OPENAI_MODEL`, `AGENT_REASONING_EFFORT` | `gpt-5.4-mini`, `low` | Model choice |
+| `GEMINI_API_KEY` / `OPENAI_API_KEY` | — | AI planner (server-only); Gemini is used when its key is set |
+| `AI_PROVIDER` | auto | Force `gemini` or `openai` |
+| `GEMINI_MODEL`, `OPENAI_MODEL`, `AGENT_REASONING_EFFORT` | `gemini-3.5-flash`, `gpt-5.4-mini`, `low` | Model choice |
 | `AGENT_MAX_STEPS`, `AGENT_RUN_TIMEOUT_SECONDS`, `AGENT_MODEL_TIMEOUT_SECONDS` | `18`, `300`, `60` | Run limits |
 | `AGENT_STELLAR_SECRET` / `_PUBLIC` | `wallets:setup` | Agent payer wallet |
 | `TREASURY_STELLAR_SECRET` / `_PUBLIC`, `FUNDING_GUARD_FLOAT_TARGET_USDC` | `wallets:setup`, `1` | Funding guard |
@@ -294,7 +295,7 @@ All configuration is server-side and validated at startup ([`env.ts`](src/server
 
 ## Security notes
 
-- **Secrets stay on the server**: the agent, treasury and demo keys and the OpenAI key are read only by server modules, never sent to the browser, never logged; configuration errors name a setting without echoing its value. The model never sees keys or the owner's limits.
+- **Secrets stay on the server**: the agent, treasury and demo keys and the model API keys are read only by server modules, never sent to the browser, never logged; configuration errors name a setting without echoing its value. The model never sees keys or the owner's limits.
 - **Prompt injection**: provider text reaches the model only inside tool results, labelled as untrusted data; the system prompt says data is never an instruction; no tool accepts a payee, amount or approval; arguments are validated server-side; the policy engine and approval binding apply regardless of what the model says.
 - **Payee trust anchor**: providers are paid only at wallets in the server's registry, never at an address a provider supplies.
 - **Limits enforced before signing**, twice; approval lifts only the threshold, never other limits.
@@ -337,7 +338,7 @@ Stellar supports two agentic-payment protocols ([docs](https://developers.stella
 ## Known limitations
 
 - **Simulated utilities and demo providers.** No real DisCo, VTU or mobile-network integration.
-- **Live AI runs need OpenAI credit.** Without it the AI planner stops with `model_no_credits`; the deterministic planner runs the same tools, rules and payments. AI behaviour is proven with a scripted model in tests.
+- **Live AI runs use model credit.** Without a working key the AI planner stops safely (for example `model_no_credits`); the deterministic planner runs the same tools, rules and payments. AI behaviour is also proven with a scripted model in tests. Model availability varies: if Google reports high demand for a model, set `GEMINI_MODEL` to another one your key lists.
 - **Single household, no authentication.**
 - **Per-process concurrency guard** (plus database unique constraints); multi-instance deployment needs a database-level lock.
 - **Funding guard keys.** The treasury key is server-side for the demo. Allowance expiry is shown as an estimate from the ledger gap.
@@ -352,7 +353,8 @@ Stellar supports two agentic-payment protocols ([docs](https://developers.stella
 
 - **A page returns 500 after updating.** The database is missing new columns: run `pnpm db:migrate`, then reload.
 - **"Provider answered HTTP 404 instead of 402".** `APP_BASE_URL` points at a different app; match it to where Borderless runs.
-- **AI mode greyed out / `model_no_credits`.** Add `OPENAI_API_KEY` (with credit) to `.env.local` and restart.
+- **AI mode greyed out / `model_no_credits`.** Add `GEMINI_API_KEY` (or `OPENAI_API_KEY` with credit) to `.env.local` and restart `pnpm dev`.
+- **Gemini 404 "no longer available" or 503 "high demand".** Set `GEMINI_MODEL` to a current model your key can use (the default is `gemini-3.5-flash`).
 - **"…is missing or invalid. Run `pnpm wallets:setup`."** Run it, then restart `pnpm dev`.
 - **Wallets not found / insufficient funds later.** Testnet was probably reset: `pnpm wallets:status`, then `pnpm wallets:setup`.
 - **Funding guard shows "Couldn't read the network".** The Soroban RPC is unreachable or slow; the rest of the app keeps working.

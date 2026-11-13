@@ -315,3 +315,30 @@ describe("deterministic planner (no AI)", () => {
     expect(events.some((e) => e.tool === "purchase_utility")).toBe(false);
   });
 });
+
+describe("AI provider selection", () => {
+  const G = "AIzaSy" + "g".repeat(33);
+  const O = "sk-test-" + "o".repeat(40);
+  const pick = async (vars: Record<string, string | undefined>) => {
+    const keep = { GEMINI_API_KEY: process.env.GEMINI_API_KEY, OPENAI_API_KEY: process.env.OPENAI_API_KEY, AI_PROVIDER: process.env.AI_PROVIDER };
+    for (const [k, v] of Object.entries(vars)) if (v === undefined) delete process.env[k]; else process.env[k] = v;
+    const { aiProvider, resetEnvCache } = await import("@/server/config/env");
+    resetEnvCache();
+    try {
+      return aiProvider();
+    } finally {
+      for (const [k, v] of Object.entries(keep)) if (v === undefined) delete process.env[k]; else process.env[k] = v;
+      resetEnvCache();
+    }
+  };
+
+  it("uses Gemini through its OpenAI-compatible endpoint when its key is set", async () => {
+    expect(await pick({ GEMINI_API_KEY: G, OPENAI_API_KEY: O, AI_PROVIDER: undefined })).toEqual({ provider: "gemini", apiKey: G, model: "gemini-3.5-flash", baseURL: "https://generativelanguage.googleapis.com/v1beta/openai/" });
+  });
+  it("falls back to OpenAI, honours AI_PROVIDER, and is null without a key", async () => {
+    expect((await pick({ GEMINI_API_KEY: undefined, OPENAI_API_KEY: O, AI_PROVIDER: undefined }))?.provider).toBe("openai");
+    expect((await pick({ GEMINI_API_KEY: G, OPENAI_API_KEY: O, AI_PROVIDER: "openai" }))?.provider).toBe("openai");
+    expect(await pick({ GEMINI_API_KEY: undefined, OPENAI_API_KEY: undefined, AI_PROVIDER: undefined })).toBeNull();
+    expect(await pick({ GEMINI_API_KEY: undefined, OPENAI_API_KEY: O, AI_PROVIDER: "gemini" })).toBeNull(); // forced, but no Gemini key
+  });
+});

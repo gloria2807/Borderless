@@ -42,7 +42,11 @@ const baseSchema = z.object({
   SOROBAN_RPC_URL: z.string().url().default("https://soroban-testnet.stellar.org"),
   /** When the agent wallet is short before a payment, top it up to this many testnet USDC. */
   FUNDING_GUARD_FLOAT_TARGET_USDC: z.coerce.number().positive().max(1000).default(1),
-  // AI planner (OpenAI). The API key itself is read lazily by openaiApiKey().
+  // AI planner. Gemini (via its OpenAI-compatible endpoint) or OpenAI. Keys are read lazily by aiProvider().
+  /** Which model provider plans: "gemini" or "openai". Default: Gemini if GEMINI_API_KEY is set, else OpenAI. */
+  AI_PROVIDER: z.enum(["gemini", "openai"]).optional(),
+  GEMINI_MODEL: z.string().min(1).default("gemini-3.5-flash"),
+  GEMINI_BASE_URL: z.string().url().default("https://generativelanguage.googleapis.com/v1beta/openai/"),
   OPENAI_MODEL: z.string().min(1).default("gpt-5.4-mini"),
   AGENT_REASONING_EFFORT: z.enum(["minimal", "low", "medium", "high"]).default("low"),
   AGENT_MAX_STEPS: z.coerce.number().int().min(4).max(40).default(18),
@@ -105,6 +109,33 @@ export function emptyWalletSecret(): string | null {
 export function openaiApiKey(): string | null {
   const key = process.env.OPENAI_API_KEY?.trim();
   return key && key.length > 20 ? key : null;
+}
+
+/** Gemini key for the AI planner. Server-only; never sent to the browser or logged. */
+export function geminiApiKey(): string | null {
+  const key = process.env.GEMINI_API_KEY?.trim();
+  return key && key.length > 20 ? key : null;
+}
+
+export interface AiProvider {
+  provider: "gemini" | "openai";
+  apiKey: string;
+  model: string;
+  /** OpenAI-compatible base URL (Gemini); undefined = OpenAI's own. */
+  baseURL?: string;
+}
+
+/**
+ * The model provider the AI planner uses. Both are called through the OpenAI SDK: Gemini
+ * exposes an OpenAI-compatible Chat Completions endpoint with tool calling.
+ */
+export function aiProvider(): AiProvider | null {
+  const cfg = env();
+  const gemini = geminiApiKey();
+  const openai = openaiApiKey();
+  const choice = cfg.AI_PROVIDER ?? (gemini ? "gemini" : "openai");
+  if (choice === "gemini") return gemini ? { provider: "gemini", apiKey: gemini, model: cfg.GEMINI_MODEL, baseURL: cfg.GEMINI_BASE_URL } : null;
+  return openai ? { provider: "openai", apiKey: openai, model: cfg.OPENAI_MODEL } : null;
 }
 
 /**

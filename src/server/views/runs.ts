@@ -3,7 +3,7 @@
  * persisted run log — the UI shows only what the backend recorded.
  */
 import { desc, eq, inArray } from "drizzle-orm";
-import { env } from "../config/env";
+import { aiProvider, env } from "../config/env";
 import { db } from "../db/client";
 import * as s from "../db/schema";
 import type { RunStage, UtilityKind } from "../db/schema";
@@ -123,7 +123,7 @@ export async function getRunView(householdId: string, runId: string): Promise<Ru
 }
 
 export function launcherInfo() {
-  return { aiAvailable: aiAvailable(), model: env().OPENAI_MODEL, defaultTask: DEFAULT_TASK };
+  return { aiAvailable: aiAvailable(), model: aiProvider()?.model ?? env().GEMINI_MODEL, defaultTask: DEFAULT_TASK };
 }
 
 export type { RunStage };

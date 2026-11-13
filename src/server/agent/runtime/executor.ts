@@ -4,7 +4,7 @@
  * run does is persisted to the run log as it happens.
  */
 import OpenAI from "openai";
-import { env, openaiApiKey } from "../../config/env";
+import { aiProvider, env } from "../../config/env";
 import type { Database } from "../../db/client";
 import { loadHousehold } from "../../household/state";
 import { sweepInterruptedPurchases } from "../../transactions/sweep";
@@ -46,7 +46,7 @@ export interface StartRunOptions {
 }
 
 export function aiAvailable(): boolean {
-  return openaiApiKey() !== null;
+  return aiProvider() !== null;
 }
 
 export function activeRunFor(householdId: string): string | null {
@@ -73,10 +73,11 @@ export async function startAgentRun(db: Database, opts: StartRunOptions): Promis
   const mode: AgentMode = opts.mode ?? (aiAvailable() || opts.client ? "ai" : "deterministic");
   let client = opts.client;
   if (mode === "ai" && !client) {
-    const key = openaiApiKey();
-    if (!key) throw new AiUnavailableError("AI mode needs OPENAI_API_KEY in .env.local. Use the deterministic planner, or add the key.");
-    client = new OpenAI({ apiKey: key, maxRetries: 2 }) as unknown as ChatClient;
+    const ai = aiProvider();
+    if (!ai) throw new AiUnavailableError("AI mode needs GEMINI_API_KEY (or OPENAI_API_KEY) in .env.local. Use the deterministic planner, or add a key.");
+    client = new OpenAI({ apiKey: ai.apiKey, baseURL: ai.baseURL, maxRetries: 2 }) as unknown as ChatClient;
   }
+  const model = mode === "ai" ? (opts.client ? (aiProvider()?.model ?? "scripted") : aiProvider()!.model) : null;
 
   // Reconcile anything a previous process left behind before starting fresh.
   await markOrphanedRunsInterrupted(db, opts.householdId, new Set(active.values()));
@@ -88,7 +89,7 @@ export async function startAgentRun(db: Database, opts: StartRunOptions): Promis
   const runId = await createRun(db, {
     householdId: opts.householdId,
     mode,
-    model: mode === "ai" ? cfg.OPENAI_MODEL : null,
+    model,
     task,
     trigger: opts.trigger ?? "manual",
     simTime: state.household.simulatedNow,
@@ -98,8 +99,8 @@ export async function startAgentRun(db: Database, opts: StartRunOptions): Promis
   await appendRunEvent(db, runId, {
     stage: "planning",
     type: "run.started",
-    input: { task, mode, model: mode === "ai" ? cfg.OPENAI_MODEL : null, household_time: state.household.simulatedNow.toISOString() },
-    reason: mode === "ai" ? `AI agent (${cfg.OPENAI_MODEL}) is planning the task.` : "Deterministic planner (no AI) is following the allocation engine.",
+    input: { task, mode, model, household_time: state.household.simulatedNow.toISOString() },
+    reason: mode === "ai" ? `AI agent (${model}) is planning the task.` : "Deterministic planner (no AI) is following the allocation engine.",
   });
 
   const ctx: ToolContext = {
@@ -119,7 +120,7 @@ export async function startAgentRun(db: Database, opts: StartRunOptions): Promis
         mode === "ai"
           ? await runAiPlanner(ctx, task, {
               client: client!,
-              model: cfg.OPENAI_MODEL,
+              model: model!,
               maxSteps: cfg.AGENT_MAX_STEPS,
               callTimeoutMs: cfg.AGENT_MODEL_TIMEOUT_SECONDS * 1000,
               reasoningEffort: cfg.AGENT_REASONING_EFFORT,
