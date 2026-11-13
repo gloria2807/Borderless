@@ -24,9 +24,39 @@ function Statuses({ p }: { p: PurchaseRowView }) {
   );
 }
 
-export default async function TransactionsPage() {
-  const rows = await getPurchases(DEMO_HOUSEHOLD);
-  const paid = rows.filter((r) => r.paymentStatus === "confirmed");
+const STATUS_FILTERS: Record<string, { label: string; match: (p: PurchaseRowView) => boolean }> = {
+  completed: { label: "Completed", match: (p) => p.stage === "completed" },
+  in_progress: { label: "In progress", match: (p) => ["requested", "payment_required", "submitted"].includes(p.stage) },
+  awaiting_approval: { label: "Awaiting approval", match: (p) => p.stage === "awaiting_approval" },
+  needs_attention: { label: "Needs attention", match: (p) => p.stage === "needs_attention" },
+  failed: { label: "Failed (not charged)", match: (p) => p.stage === "failed" },
+  cancelled: { label: "Declined or expired", match: (p) => p.stage === "cancelled" },
+};
+
+const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v)?.trim() ?? "";
+
+/** Free-text match over what an owner would search by: product, provider, recipient, ids, hash, failure. */
+function matches(p: PurchaseRowView, q: string): boolean {
+  if (!q) return true;
+  const hay = [p.id, p.label, p.providerName, p.recipient, p.kind, UTILITY_NAMES[p.kind], p.txHash, p.failureCode, p.failureMessage, String(p.amountNgn), naira(p.amountNgn)]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+  return q
+    .toLowerCase()
+    .split(/\s+/)
+    .every((term) => hay.includes(term.replace(/^₦/, "")) || hay.includes(term));
+}
+
+export default async function TransactionsPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
+  const sp = await searchParams;
+  const q = one(sp.q).slice(0, 100);
+  const utility = one(sp.utility);
+  const status = one(sp.status);
+  const all = await getPurchases(DEMO_HOUSEHOLD);
+  const filtering = Boolean(q || (utility && utility in UTILITY_NAMES) || (status && status in STATUS_FILTERS));
+  const rows = all.filter((p) => matches(p, q) && (!(utility in UTILITY_NAMES) || p.kind === utility) && (!(status in STATUS_FILTERS) || STATUS_FILTERS[status]!.match(p)));
+  const paid = all.filter((r) => r.paymentStatus === "confirmed");
   const totalNgn = paid.reduce((t, r) => t + r.amountNgn, 0);
   const totalUsdc = paid.reduce((t, r) => t + BigInt(r.amountAtomic ?? "0"), 0n);
 
@@ -41,7 +71,7 @@ export default async function TransactionsPage() {
       <div className="mb-6 grid gap-4 sm:grid-cols-3">
         <div className="rounded-lg border border-line bg-surface px-4 py-3">
           <p className="text-2xs text-fg-3">Purchases</p>
-          <p className="mono mt-1 text-xl">{rows.length}</p>
+          <p className="mono mt-1 text-xl">{all.length}</p>
         </div>
         <div className="rounded-lg border border-line bg-surface px-4 py-3">
           <p className="text-2xs text-fg-3">Confirmed spend (household value)</p>
@@ -55,8 +85,68 @@ export default async function TransactionsPage() {
         </div>
       </div>
 
+      <form role="search" aria-label="Search transactions" method="get" className="mb-4 flex flex-wrap items-end gap-3">
+        <div className="min-w-[220px] flex-1">
+          <label htmlFor="tx-q" className="text-[13px] font-medium text-fg-2">
+            Search
+          </label>
+          <input
+            id="tx-q"
+            name="q"
+            type="search"
+            defaultValue={q}
+            maxLength={100}
+            placeholder="Provider, product, phone or meter, transaction hash…"
+            className="mt-1.5 h-9 w-full rounded-md border border-line bg-bg-2 px-3 text-[13px] text-fg outline-none placeholder:text-fg-3 focus:border-green"
+          />
+        </div>
+        <div>
+          <label htmlFor="tx-utility" className="text-[13px] font-medium text-fg-2">
+            Utility
+          </label>
+          <select id="tx-utility" name="utility" defaultValue={utility} className="mt-1.5 block h-9 rounded-md border border-line bg-bg-2 px-2 text-[13px] text-fg outline-none focus:border-green">
+            <option value="">All</option>
+            {(["electricity", "airtime", "data"] as const).map((k) => (
+              <option key={k} value={k}>
+                {UTILITY_NAMES[k]}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label htmlFor="tx-status" className="text-[13px] font-medium text-fg-2">
+            Status
+          </label>
+          <select id="tx-status" name="status" defaultValue={status} className="mt-1.5 block h-9 rounded-md border border-line bg-bg-2 px-2 text-[13px] text-fg outline-none focus:border-green">
+            <option value="">All</option>
+            {Object.entries(STATUS_FILTERS).map(([k, v]) => (
+              <option key={k} value={k}>
+                {v.label}
+              </option>
+            ))}
+          </select>
+        </div>
+        <button type="submit" className="h-9 rounded-md border border-line bg-raised px-4 text-[13px] font-semibold text-fg hover:border-fg-3 focus-visible:outline-2 focus-visible:outline-green">
+          Search
+        </button>
+        {filtering && (
+          <Link href="/transactions" className="h-9 px-2 text-[13px] leading-9 text-fg-3 hover:text-fg">
+            Clear
+          </Link>
+        )}
+      </form>
+      {filtering && (
+        <p className="mb-3 text-[13px] text-fg-3" aria-live="polite">
+          {rows.length} of {all.length} purchase{all.length === 1 ? "" : "s"} match.
+        </p>
+      )}
+
       <Panel bodyClassName="p-0">
-        {rows.length === 0 ? (
+        {rows.length === 0 && filtering ? (
+          <EmptyState icon={<ReceiptText className="size-6" />} title="No purchases match" action={<Link href="/transactions" className="text-[13px] font-medium text-fg-2 underline">Clear the search</Link>}>
+            Try a provider name, a product, a phone number or meter, or part of a Stellar transaction hash.
+          </EmptyState>
+        ) : rows.length === 0 ? (
           <EmptyState icon={<ReceiptText className="size-6" />} title="No transactions yet">
             Purchases appear here once Borderless (or you) buys electricity, airtime or data.
           </EmptyState>

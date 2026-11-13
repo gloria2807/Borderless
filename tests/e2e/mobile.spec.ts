@@ -4,7 +4,7 @@ import { loadScenario } from "./helpers";
 test.beforeEach(async ({ request }) => loadScenario(request, "both-low"));
 
 test("mobile: no horizontal overflow on any page", async ({ page }) => {
-  for (const path of ["/", "/agent", "/household", "/transactions", "/settings"]) {
+  for (const path of ["/", "/agent", "/household", "/accounts", "/transactions", "/settings"]) {
     await page.goto(path);
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
     expect(overflow, `${path} overflows by ${overflow}px`).toBeLessThanOrEqual(0);

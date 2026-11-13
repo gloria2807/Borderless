@@ -37,6 +37,8 @@ const baseSchema = z.object({
   AGENT_STELLAR_PUBLIC: z.string().regex(STELLAR_PUBLIC_KEY).optional(),
   // Funding guard: a household treasury grants the agent wallet a capped, expiring allowance.
   TREASURY_STELLAR_PUBLIC: z.string().regex(STELLAR_PUBLIC_KEY).optional(),
+  /** A funded-for-fees but EMPTY testnet wallet, used by the "empty wallet" demo scenario. */
+  DEMO_EMPTY_WALLET_PUBLIC: z.string().regex(STELLAR_PUBLIC_KEY).optional(),
   SOROBAN_RPC_URL: z.string().url().default("https://soroban-testnet.stellar.org"),
   /** When the agent wallet is short before a payment, top it up to this many testnet USDC. */
   FUNDING_GUARD_FLOAT_TARGET_USDC: z.coerce.number().positive().max(1000).default(1),
@@ -90,6 +92,12 @@ export function agentSecret(): string {
  */
 export function treasurySecret(): string | null {
   const secret = process.env.TREASURY_STELLAR_SECRET;
+  return secret && STELLAR_SECRET_KEY.test(secret) ? secret : null;
+}
+
+/** Secret of the empty demo wallet (insufficient-funds scenario). Holds no USDC. */
+export function emptyWalletSecret(): string | null {
+  const secret = process.env.DEMO_EMPTY_WALLET_SECRET;
   return secret && STELLAR_SECRET_KEY.test(secret) ? secret : null;
 }
 

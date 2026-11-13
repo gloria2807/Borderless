@@ -2,13 +2,14 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { House, LayoutGrid, ListChecks, ReceiptText, SlidersHorizontal } from "lucide-react";
+import { Cable, House, LayoutGrid, ListChecks, ReceiptText, SlidersHorizontal } from "lucide-react";
 import { cn } from "@/components/ui/primitives";
 
 const ITEMS = [
   { href: "/", label: "Overview", icon: LayoutGrid },
   { href: "/agent", label: "Agent", icon: ListChecks },
   { href: "/household", label: "Household", icon: House },
+  { href: "/accounts", label: "Accounts", icon: Cable },
   { href: "/transactions", label: "Transactions", icon: ReceiptText },
   { href: "/settings", label: "Settings", icon: SlidersHorizontal },
 ] as const;

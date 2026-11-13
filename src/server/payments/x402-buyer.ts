@@ -15,7 +15,7 @@ import type { PaymentPayload, PaymentRequired, PaymentRequirements } from "@x402
 import { createEd25519Signer, InsufficientBalanceError, SimulationFailedError, TrustlineMissingError } from "@x402/stellar";
 import { ExactStellarScheme } from "@x402/stellar/exact/client";
 import { z } from "zod";
-import { agentSecret, env } from "../config/env";
+import { agentSecret, emptyWalletSecret, env } from "../config/env";
 import { providerPayTo } from "../providers/registry";
 import type { Database } from "../db/client";
 import * as s from "../db/schema";
@@ -29,6 +29,7 @@ import { recordEvent } from "../transactions/events";
 import { confirmOnHorizon, explorerTxUrl } from "./horizon";
 import { readUsdcWallet, type WalletBalanceReader } from "./wallet";
 import { treasuryFunding, type FundingSource } from "./funding-guard";
+import { isFaultEnabled } from "../demo/faults";
 import { formatAtomic, ngnToTestnetUsdcAtomic, TESTNET_USDC } from "./pricing";
 import { quantity } from "../../lib/format";
 
@@ -124,8 +125,8 @@ async function upsertPayment(db: Database, purchaseId: string, patch: Partial<ty
   }
 }
 
-function buildClient(maxPerPaymentUsd: string, expected: (r: PaymentRequirements) => boolean) {
-  const signer = createEd25519Signer(agentSecret(), env().STELLAR_NETWORK);
+function buildClient(maxPerPaymentUsd: string, expected: (r: PaymentRequirements) => boolean, secret: string = agentSecret()) {
+  const signer = createEd25519Signer(secret, env().STELLAR_NETWORK);
   const core = new x402Client()
     .register("stellar:*", new ExactStellarScheme(signer, { url: env().STELLAR_RPC_URL }))
     // SDK-level spend cap (defence in depth; our NGN policy is the primary control).
@@ -269,7 +270,11 @@ export async function executePurchase(db: Database, purchaseId: string, options:
     }
 
     const maxUsd = `$${formatAtomic(ngnToTestnetUsdcAtomic(state.policy.perPurchaseLimitNgn, env().DEMO_NGN_PER_TESTNET_USDC))}`;
-    const { http, payer } = buildClient(maxUsd, isExpected);
+    // Demo: the "empty wallet" scenario pays from a real testnet wallet that holds no USDC.
+    const emptyWallet = await isFaultEnabled("agent_wallet_empty");
+    const emptySecret = emptyWallet ? emptyWalletSecret() : null;
+    if (emptyWallet && !emptySecret) throw new StepError("configuration_error", "The empty demo wallet is not set up. Run `pnpm wallets:setup`.", "no");
+    const { http, payer } = buildClient(maxUsd, isExpected, emptySecret ?? undefined);
     let paymentRequired: PaymentRequired;
     try {
       paymentRequired = http.getPaymentRequiredResponse((n) => first.headers.get(n), await readBody(first));
@@ -323,7 +328,7 @@ export async function executePurchase(db: Database, purchaseId: string, options:
 
     // Funding guard: if the agent wallet is short, draw a top-up from the household treasury
     // within its on-chain allowance (Stellar enforces the cap and expiry), then re-read.
-    const funding = options.funding === undefined ? (options.walletBalance ? null : treasuryFunding) : options.funding;
+    const funding = emptyWallet ? null : options.funding === undefined ? (options.walletBalance ? null : treasuryFunding) : options.funding;
     const required = BigInt(offered.amount);
     if (funding && balance !== null && balance < required) {
       try {

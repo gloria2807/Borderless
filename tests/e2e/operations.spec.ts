@@ -107,3 +107,31 @@ test("operations: the run page has no serious accessibility violations", async (
   const summary = serious.map((v) => `${v.id}: ${v.help} (${v.nodes.length}) e.g. ${v.nodes[0]?.target.join(" ")}`);
   expect(summary, summary.join("\n")).toEqual([]);
 });
+
+test("transactions: search and filters narrow the history", async ({ page, request }) => {
+  await loadScenario(request, "needs-approval");
+  await startDeterministicRun(page); // parks one PowerGrid electricity purchase (no payment)
+  await page.goto("/transactions");
+  const search = page.getByRole("search", { name: "Search transactions" });
+  await search.getByLabel("Search").fill("powergrid");
+  await search.getByRole("button", { name: "Search" }).click();
+  await expect(page).toHaveURL(/q=powergrid/);
+  await expect(page.getByText("1 of 1 purchase match.")).toBeVisible();
+  await search.getByLabel("Search").fill("no-such-thing");
+  await search.getByRole("button", { name: "Search" }).click();
+  await expect(page.getByText("No purchases match")).toBeVisible();
+  await page.goto("/transactions?status=awaiting_approval&utility=electricity");
+  await expect(page.getByText("1 of 1 purchase match.")).toBeVisible();
+  await page.getByRole("link", { name: "Clear", exact: true }).click();
+  await expect(page).toHaveURL(/\/transactions$/);
+});
+
+test("accounts: each account lists the providers that can serve it", async ({ page, request }) => {
+  await loadScenario(request, "provider-outage");
+  await page.goto("/accounts");
+  const electricity = page.locator("section").filter({ hasText: "Electricity · Home meter" }).first();
+  await expect(electricity.getByText("Demo PowerGrid Vend")).toBeVisible();
+  await expect(electricity.getByText("Unavailable")).toBeVisible();
+  const airtime = page.locator("section").filter({ hasText: "Airtime · Owner's line" }).first();
+  await expect(airtime.getByText("Demo TopUp Hub")).toBeVisible();
+});

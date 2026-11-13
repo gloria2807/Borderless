@@ -14,6 +14,9 @@ import { appendRunEvent } from "./run-log";
 import { callTool, type ToolContext } from "./tools";
 import type { PlannerOutcome } from "./planner-openai";
 
+/** Failures caused by the household side (wallet, rules, setup): no other provider would succeed. */
+const HOUSEHOLD_SIDE_FAILURES = new Set(["insufficient_testnet_funds", "trustline_missing", "wallet_unverified", "policy_denied", "configuration_error", "approval_terms_mismatch"]);
+
 /** Fallback attempts per utility after the first choice fails. */
 const MAX_FALLBACKS = 1;
 
@@ -43,13 +46,17 @@ export async function runDeterministicPlanner(ctx: ToolContext): Promise<Planner
   const attempt = async (plan: PlannedPurchase, why: string): Promise<Attempt> => {
     const quote = (await call("request_quote", { utility: plan.kind, provider_id: plan.product.providerId, product_code: plan.product.code })) as { quote_id?: string; error?: string };
     if (!quote.quote_id) return { outcome: "retry", why: quote.error ?? "no quote" };
-    const bought = (await call("purchase_utility", { quote_id: quote.quote_id, reason: why })) as { purchase_id?: string; status?: string; payment_status?: string; failure?: string | null; reason?: string };
+    const bought = (await call("purchase_utility", { quote_id: quote.quote_id, reason: why })) as { purchase_id?: string; status?: string; payment_status?: string; failure?: string | null; failure_code?: string | null; reason?: string };
     if (bought.purchase_id && bought.status === "completed") {
       await call("verify_fulfilment", { purchase_id: bought.purchase_id });
       return { outcome: "done" };
     }
     // Only retry elsewhere when nothing was charged; never pay twice for an ambiguous outcome.
-    if (bought.status === "failed" && bought.payment_status === "failed") return { outcome: "retry", why: bought.failure ?? "the purchase failed before payment" };
+    // A different provider only helps with provider-side failures. Wallet, policy and configuration
+    // failures would fail the same way anywhere, so they stop here.
+    if (bought.status === "failed" && bought.payment_status === "failed" && !HOUSEHOLD_SIDE_FAILURES.has(bought.failure_code ?? "")) {
+      return { outcome: "retry", why: bought.failure ?? "the purchase failed before payment" };
+    }
     return { outcome: "stop" };
   };
 

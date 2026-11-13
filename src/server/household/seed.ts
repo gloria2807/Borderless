@@ -68,6 +68,8 @@ export async function seedDemoHousehold(db: Database, scenarioId: string = DEFAU
     approvedProviderIds: ALL_PROVIDERS.map((m) => m.definition.id),
   });
 
+  if (scenario.faults?.length) await db.insert(s.demoFaults).values(scenario.faults.map((key) => ({ key, enabled: true })));
+
   await db.insert(s.utilityAccounts).values([
     { id: DEMO_ACCOUNTS.electricity, householdId: DEMO_HOUSEHOLD_ID, kind: "electricity", providerId: PROVIDERS.electricity.id, label: "Home meter", identifier: "45012345678" },
     { id: DEMO_ACCOUNTS.airtime, householdId: DEMO_HOUSEHOLD_ID, kind: "airtime", providerId: PROVIDERS.airtime.id, label: "Owner's line", identifier: "+2348030000417", network: "mtn" },

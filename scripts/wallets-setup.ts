@@ -2,6 +2,7 @@
  * Creates and prepares the dedicated Stellar TESTNET wallets Borderless needs.
  *
  *  - Agent payer wallet: Friendbot XLM, USDC trustline, testnet USDC (via a testnet DEX swap).
+ *  - Empty demo wallet: XLM + USDC trustline, no USDC (the insufficient-funds scenario).
  *  - Household treasury (Funding guard): Friendbot XLM, USDC trustline, 5 testnet USDC.
  *  - One receiving wallet per demo provider: Friendbot XLM + USDC trustline.
  *
@@ -36,6 +37,7 @@ interface WalletSpec {
 
 const WALLETS: WalletSpec[] = [
   { label: "Agent payer", secretVar: "AGENT_STELLAR_SECRET", publicVar: "AGENT_STELLAR_PUBLIC", needsUsdc: true },
+  { label: "Empty demo wallet", secretVar: "DEMO_EMPTY_WALLET_SECRET", publicVar: "DEMO_EMPTY_WALLET_PUBLIC", needsUsdc: false },
   { label: "Household treasury", secretVar: "TREASURY_STELLAR_SECRET", publicVar: "TREASURY_STELLAR_PUBLIC", needsUsdc: true, usdcTarget: 5 },
   { label: "Electricity provider", secretVar: "PROVIDER_ELECTRICITY_SECRET", publicVar: "PROVIDER_ELECTRICITY_PAYTO", needsUsdc: false },
   { label: "Airtime provider", secretVar: "PROVIDER_AIRTIME_SECRET", publicVar: "PROVIDER_AIRTIME_PAYTO", needsUsdc: false },

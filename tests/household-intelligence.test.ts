@@ -171,7 +171,8 @@ describe("adaptive deterministic planner", () => {
     const quoted = pf.quotes().map((q) => q.url.split("/")[3]);
     expect(quoted).toEqual(["prv_demo_powergrid", "prv_demo_electricity"]);
     const adapted = events.filter((e) => e.type === "planner.adapted");
-    expect(adapted.map((e) => e.decision)).toEqual(["try_alternative", "give_up"]);
+    // The fallback then stops on the empty wallet: a household-side failure no other provider can fix.
+    expect(adapted.map((e) => e.decision)).toEqual(["try_alternative"]);
     expect(adapted[0]!.reason).toMatch(/Demo PowerGrid Vend could not complete the purchase .* Nothing was charged\. Trying .* from Demo Prepaid Electricity instead\./);
     // The fallback stopped before signing (empty wallet) — never charged twice, never signed.
     expect(events.some((e) => e.type === "payment.signing")).toBe(false);
