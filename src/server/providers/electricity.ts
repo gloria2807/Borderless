@@ -32,6 +32,7 @@ export interface ElectricityConfig {
 export function createElectricityProvider(cfg: ElectricityConfig): ProviderModule & { tariffNgnPerKwh: number } {
   const definition: ProviderDefinition = {
     id: cfg.id,
+    category: "utility",
     kind: "electricity",
     name: cfg.name,
     countryCode: "NG",

@@ -8,20 +8,35 @@ import { vi } from "vitest";
 import { handleFulfilmentRetry, handleProviderPurchase } from "@/server/providers/purchase-handler";
 import { handleQuoteRequest } from "@/server/providers/quote-handler";
 import { errorResponse, parseProviderId } from "@/server/providers/route-kind";
+import { handleRegistryRequest, handleServiceDocumentRequest } from "@/server/providers/catalog";
+import { db } from "@/server/db/client";
 
 export interface ProviderFetchOptions {
   purchase?: (request: Request, body: Record<string, unknown>) => Response | Promise<Response>;
   quote?: (request: Request, body: Record<string, unknown>) => Response | Promise<Response>;
+  /** Override a provider service document (e.g. to publish a tampered payee). */
+  service?: (providerId: string, doc: Record<string, unknown>) => Record<string, unknown> | Response;
 }
 
 export function providerFetch(opts: ProviderFetchOptions = {}) {
-  const calls: { kind: "quote" | "purchase" | "retry" | "other"; url: string; body: Record<string, unknown> | null }[] = [];
+  const calls: { kind: "quote" | "purchase" | "retry" | "discovery" | "other"; url: string; body: Record<string, unknown> | null }[] = [];
   const impl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = new URL(String(input));
     const [, , , providerId, action] = url.pathname.split("/"); // /api/providers/:id/:action
     const bodyText = typeof init?.body === "string" ? init.body : null;
     const body = bodyText ? (JSON.parse(bodyText) as Record<string, unknown>) : null;
+    if (url.pathname === "/api/providers") {
+      calls.push({ kind: "discovery", url: url.pathname, body: null });
+      return handleRegistryRequest();
+    }
     const kind = parseProviderId(providerId ?? "");
+    if (action === "service" && kind) {
+      calls.push({ kind: "discovery", url: url.pathname, body: null });
+      const res = await handleServiceDocumentRequest(db(), kind);
+      if (!opts.service) return res;
+      const out = opts.service(kind.definition.id, (await res.json()) as Record<string, unknown>);
+      return out instanceof Response ? out : Response.json(out);
+    }
     const which = action === "quote" ? "quote" : action === "purchase" ? "purchase" : action === "fulfilment" ? "retry" : "other";
     calls.push({ kind: which, url: url.pathname, body });
     const request = new Request(url, init);

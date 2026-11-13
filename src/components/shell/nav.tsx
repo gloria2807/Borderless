@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Cable, House, LayoutGrid, ListChecks, ReceiptText, SlidersHorizontal } from "lucide-react";
+import { Cable, House, LayoutGrid, ListChecks, Network, ReceiptText, SlidersHorizontal } from "lucide-react";
 import { cn } from "@/components/ui/primitives";
 
 const ITEMS = [
@@ -10,6 +10,7 @@ const ITEMS = [
   { href: "/agent", label: "Agent", icon: ListChecks },
   { href: "/household", label: "Household", icon: House },
   { href: "/accounts", label: "Accounts", icon: Cable },
+  { href: "/providers", label: "Providers", icon: Network },
   { href: "/transactions", label: "Transactions", icon: ReceiptText },
   { href: "/settings", label: "Settings", icon: SlidersHorizontal },
 ] as const;

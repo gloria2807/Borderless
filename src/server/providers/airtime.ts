@@ -19,6 +19,7 @@ export interface AirtimeConfig {
 export function createAirtimeProvider(cfg: AirtimeConfig): ProviderModule {
   const definition: ProviderDefinition = {
     id: cfg.id,
+    category: "utility",
     kind: "airtime",
     name: cfg.name,
     countryCode: "NG",

@@ -26,8 +26,12 @@ export interface Product {
   validityHours?: number;
 }
 
+/** What a provider sells: utility credit, or information that helps the agent decide. */
+export type ProviderCategory = "utility" | "intelligence";
+
 export interface ProviderDefinition {
   id: string;
+  category: ProviderCategory;
   kind: UtilityKind;
   name: string;
   countryCode: string;

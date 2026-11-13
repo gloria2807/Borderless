@@ -29,6 +29,7 @@ export async function seedDemoHousehold(db: Database, scenarioId: string = DEFAU
   await db.insert(s.utilityProviders).values(
     ALL_PROVIDERS.map(({ definition: p }) => ({
       id: p.id,
+      category: p.category,
       kind: p.kind,
       name: p.name,
       countryCode: p.countryCode,

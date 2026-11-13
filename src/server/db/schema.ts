@@ -138,8 +138,12 @@ export const agentPolicies = sqliteTable("agent_policies", {
 
 // ─── Utilities ────────────────────────────────────────────────────────────────
 
+export const PROVIDER_CATEGORIES = ["utility", "intelligence"] as const;
+
 export const utilityProviders = sqliteTable("utility_providers", {
   id: id(),
+  /** What the provider sells: utility credit, or information that helps the agent decide. */
+  category: text("category", { enum: PROVIDER_CATEGORIES }).notNull().default("utility"),
   kind: text("kind", { enum: UTILITY_KINDS }).notNull(),
   name: text("name").notNull(),
   countryCode: text("country_code").notNull(),

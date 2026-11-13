@@ -43,6 +43,13 @@
       "when": 1794568146609,
       "tag": "0005_funding_guard",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1794580629877,
+      "tag": "0006_provider_category",
+      "breakpoints": true
     }
   ]
 }

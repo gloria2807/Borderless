@@ -1,0 +1,1 @@
+ALTER TABLE `utility_providers` ADD `category` text DEFAULT 'utility' NOT NULL;

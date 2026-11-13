@@ -3,7 +3,7 @@ import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 import { loadScenario } from "./helpers";
 
-const PAGES = ["/", "/agent", "/household", "/accounts", "/transactions", "/settings"];
+const PAGES = ["/", "/agent", "/household", "/accounts", "/providers", "/transactions", "/settings"];
 
 test.beforeAll(async ({ request }) => loadScenario(request, "both-low"));
 

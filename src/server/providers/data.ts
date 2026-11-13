@@ -23,6 +23,7 @@ export function createDataProvider(cfg: DataConfig): ProviderModule & { bundles:
   const bundles: Product[] = cfg.bundles.map((b) => ({ ...b, providerId: cfg.id, kind: "data", unit: "MB" }));
   const definition: ProviderDefinition = {
     id: cfg.id,
+    category: "utility",
     kind: "data",
     name: cfg.name,
     countryCode: "NG",
