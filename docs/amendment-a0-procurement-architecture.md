@@ -1,6 +1,6 @@
 # Borderless — Procurement amendment: audit and updated architecture
 
-**Status:** proposal for founder review. No structural changes have been made yet.
+**Status:** approved by the founder and implemented in milestones A1–A5 (see the README, "Procurement acceptance criteria").
 **Scope:** evolve Borderless from an autonomous utility purchaser into an autonomous household **resource procurement** agent, without discarding the work from M0–M7.
 
 The question this plan answers: *"Remove the payment from your product. If it still works the same, the payment is decoration."* For Borderless the answer must be visibly **no**: without paying, the agent cannot obtain the resources (utilities or information) it needs to finish its task.

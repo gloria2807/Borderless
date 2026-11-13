@@ -90,15 +90,25 @@ export async function runAiPlanner(ctx: ToolContext, task: string, cfg: AiPlanne
         { timeout: cfg.callTimeoutMs },
       );
     } catch (err) {
+      const raw = err instanceof Error ? err.message : String(err);
+      // Gemini free tier: a per-day request quota (RESOURCE_EXHAUSTED) — distinct from having no credit.
+      const dailyQuota = err instanceof OpenAI.RateLimitError && /per day|RequestsPerDay|free_tier/i.test(raw);
       const kind =
         err instanceof OpenAI.APIConnectionTimeoutError ? "model_timeout"
-        : err instanceof OpenAI.RateLimitError && (err.code === "insufficient_quota" || /credits|quota/i.test(err.message)) ? "model_no_credits"
+        : dailyQuota ? "model_daily_quota"
+        : err instanceof OpenAI.RateLimitError && (err.code === "insufficient_quota" || /credits|quota/i.test(raw)) ? "model_no_credits"
         : err instanceof OpenAI.RateLimitError ? "model_rate_limited"
         : err instanceof OpenAI.AuthenticationError ? "model_auth_failed"
         : err instanceof OpenAI.APIError ? `model_error_${err.status ?? "unknown"}`
         : "model_unreachable";
-      const message = err instanceof Error ? err.message : String(err);
-      await appendRunEvent(ctx.db, ctx.runId, { stage: "planning", type: "model.error", error: kind, reason: `The AI model could not be reached (${kind}). No further purchases were attempted.` });
+      const message = raw;
+      const wait = /retry in ((?:\d+h)?(?:\d+m)?\d+)(?:\.\d+)?s/i.exec(raw)?.[1];
+      const retry = wait ? `${wait}s` : undefined;
+      const reason =
+        kind === "model_daily_quota"
+          ? `The AI model's daily request quota is used up${retry ? ` (it resets in about ${retry})` : ""}. No further purchases were attempted; purchases already made stay recorded.`
+          : `The AI model could not be reached (${kind}). No further purchases were attempted.`;
+      await appendRunEvent(ctx.db, ctx.runId, { stage: "planning", type: "model.error", error: kind, reason });
       return { status: "failed", summary: "Stopped: the AI model was unavailable. Purchases already made stay recorded.", steps: step - 1, usage, error: `${kind}: ${message}` };
     }
 

@@ -275,6 +275,19 @@ describe("resilience", () => {
     expect(await database.select().from(s.purchases)).toHaveLength(0);
   });
 
+  it("names a used-up daily model quota (Gemini free tier) and when it resets", async () => {
+    const message = "429 You exceeded your current quota. Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 20. Generate content requests per day limit exceeded on Free Tier. Please retry in 13h44m18.999959729s.";
+    const client: ChatClient = {
+      chat: { completions: { create: async () => { throw new OpenAI.RateLimitError(429, { message }, message, new Headers()); } } },
+    };
+    const { runId, done } = await startAgentRun(database, { householdId: DEMO_HOUSEHOLD_ID, mode: "ai", client });
+    const outcome = await done;
+    expect(outcome.error).toMatch(/^model_daily_quota/);
+    const ev = (await listRunEvents(database, runId)).find((e) => e.type === "model.error")!;
+    expect(ev.error).toBe("model_daily_quota");
+    expect(ev.reason).toMatch(/daily request quota is used up \(it resets in about 13h44m18s\)/);
+  });
+
   it("allows only one active run per household", async () => {
     let release!: () => void;
     const gate = new Promise<void>((r) => (release = r));

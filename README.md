@@ -1,8 +1,10 @@
 # Borderless
 
-**An autonomous household utilities agent.** *Your household stays powered and connected. Borderless handles the rest.*
+**An autonomous household resource procurement agent.** *Your household stays powered and connected. Borderless handles the rest.*
 
-Borderless watches a household's electricity, airtime and mobile data, forecasts shortages, weighs competing needs against a constrained budget, compares competing providers, and **buys what is needed by itself** — paying each provider through **x402 on Stellar testnet** — then verifies delivery and reassesses. An AI agent plans the work; deterministic code decides what money may move.
+Borderless keeps a household's electricity, airtime and mobile data running. It observes what the household needs, **discovers machine-accessible providers, compares their offers, decides whether information is worth buying before buying a utility, and pays each provider through x402 on Stellar testnet** — then verifies what it received and reassesses. An AI agent plans the work; deterministic code decides what money may move.
+
+**Remove the payment and Borderless stops working.** Utility credit and paid information (such as a meter diagnostic) are released only by providers' x402-protected endpoints after a payment settles. Without paying, a provider answers HTTP 402 and releases nothing — every purchase page has a **Request without paying** button that shows this live.
 
 > **Testnet and simulation.** Every payment is a real transaction on **Stellar testnet** using **test USDC**, which has **no monetary value**. Electricity, airtime and data are **simulated**: the meter and phone are virtual devices, the providers are demo services, and demo electricity tokens are not valid on any physical meter. Budgets are in naira; a fixed, labelled demo rate maps naira to test USDC — it is not an exchange rate.
 
@@ -22,6 +24,7 @@ Task → the AI agent observes the household (real state) → forecasts → comp
 - [Quick start](#quick-start)
 - [Running the demo](#running-the-demo)
 - [The agent](#the-agent)
+- [Procurement: provider network and paid information](#procurement-provider-network-and-paid-information)
 - [How a purchase works](#how-a-purchase-works)
 - [Spending policy](#spending-policy)
 - [Approvals](#approvals)
@@ -34,6 +37,7 @@ Task → the AI agent observes the household (real state) → forecasts → comp
 - [Security notes](#security-notes)
 - [Failure handling](#failure-handling)
 - [x402 and MPP](#x402-and-mpp)
+- [Procurement acceptance criteria](#procurement-acceptance-criteria)
 - [Known limitations](#known-limitations)
 - [Troubleshooting](#troubleshooting)
 
@@ -81,6 +85,10 @@ Each scenario only sets the starting state. Outcomes come from the real agent, p
 | **Nothing urgent** | Every utility has several days left | Buys nothing and says why each utility can wait |
 | **Empty payment wallet** | Electricity nearly out; the paying wallet holds 0 USDC | Gets a real HTTP 402, then stops before signing: insufficient funds, **not charged** |
 | **Prompt injection attempt** | Airtime low; one provider's description tries to instruct the agent | In AI mode, the hostile text is shown to the model as untrusted provider data; the rules still decide |
+| **Electricity use has tripled — stuck heater** | Meter draining at ~3× normal for 8 h, ~9 h left; cause hidden | Buys a ₦300 meter diagnostic first (x402); the report finds a water heater stuck on, so it buys only minimal relief (₦1,500) and tells you to fix the heater |
+| **Electricity use up — guests staying** | Use more than doubled, meter low; cause hidden | Buys the diagnostic; the report finds genuine extra use, so it buys a purchase sized for the higher rate (₦4,000) |
+| **Electricity use up, not urgent** | Use tripled but ~3 days left | Decides a diagnostic isn't worth buying yet — nothing depends on the cause — and keeps watching |
+| **Electricity use up, budget nearly gone** | Use tripled, meter low, ₦600 left | Won't buy information that couldn't change anything; asks you to review |
 | **Authority revoked** | Automatic purchasing off | Keeps monitoring and recommends, spends nothing |
 
 **Suggested five-minute walkthrough (default scenario):**
@@ -90,6 +98,14 @@ Each scenario only sets the starting state. Outcomes come from the real agent, p
 3. Open a purchase. *Payment confirmed* (Stellar testnet) and *Utility released* (simulated) are separate records; follow the transaction hash to Stellar Expert.
 4. **Household** shows the credited meter and phone; **Accounts** shows each account's providers, availability and registered payee wallets; **Transactions** is searchable.
 5. Load **Purchase needs approval** and run again: approve the exact terms, or let the request expire unpaid. Then load **Nothing urgent** — refusing to buy is part of the job.
+
+**The procurement demo (stuck heater, about three minutes):**
+
+1. Load **Electricity use has tripled — stuck heater** and start a run. The agent identifies a need it can't explain from hourly totals.
+2. It discovers the information services over HTTP (**Providers** shows the same network), judges that a ₦300 diagnostic is worth it against the purchase it could change, and compares the two offers.
+3. It requests the diagnostic: the provider answers **HTTP 402**; the spending rules pass; the payment settles on Stellar testnet; the report is released.
+4. It acts on the report: a stuck water heater means most of the extra use is avoidable, so it buys **only minimal relief** and tells you to fix the heater. Compare **guests staying**, where the same kind of surge leads to a full-size purchase.
+5. Open either purchase → **Procurement inspection**: provider, published description, protected endpoint, the decoded 402, price, asset and network, policy checks, approval, transaction, released resource and the agent's next action. Press **Request without paying** to see the provider refuse without payment.
 
 **Failure demos** (Demo controls → Failure injection): the provider fails to release after payment (then *Retry release* — no second payment); the provider asks for more than it quoted (the agent refuses to sign); per-provider outages.
 
@@ -111,6 +127,30 @@ Resetting a scenario resets the **simulated** household only. Testnet transactio
 APP_BASE_URL=http://localhost:3000 pnpm agent:run                         # AI (Gemini if its key is set)
 APP_BASE_URL=http://localhost:3000 pnpm agent:run --mode deterministic --scenario provider-outage
 ```
+
+---
+
+## Procurement: provider network and paid information
+
+**Provider network** ([`catalog.ts`](src/server/providers/catalog.ts)) — a curated registry of clearly labelled demo providers:
+
+- `GET /api/providers` lists every registered provider (free).
+- `GET /api/providers/:id/service` is each provider's **published service document** (free): products, prices, availability, fulfilment terms, payment terms and payee, and every endpoint marked **free** or **paid (x402)**.
+- The agent discovers providers by fetching these over HTTP. Code verifies each document against the registry — identity, payee wallet, network, asset, x402 on paid endpoints, endpoint address — and an unverified provider cannot be quoted or paid. Discovery returns metadata only, never a resource; provider text stays untrusted.
+
+**Two kinds of paid resource:**
+
+| | Utility credit | Information (meter diagnostic) |
+| --- | --- | --- |
+| Providers | Two per utility (six) | Demo GridSense (₦300, finding and advice) and Demo MeterLab (₦800, circuit-level evidence) |
+| Price | Free binding quote, then `POST /api/providers/:id/purchase` (x402) | The HTTP 402 *is* the price: `POST /api/services/:id/meter-diagnostic` (x402) |
+| Released after settlement | Credit on the virtual meter or phone | A diagnostic report; the meter is untouched |
+
+**Why information is worth paying for:** the household's free view of the meter is hourly totals. The cause of unusual use (a stuck appliance, more people at home, a faulty meter) is simulated **provider-side** smart-meter data that only a paid diagnostic can see — a test fails if any agent tool, view or page reads it.
+
+**Procurement decisions** ([`engine.ts`](src/server/agent/engine.ts)): the agent buys a diagnostic only when use is unexplained, a purchase depends on the cause, and the price is at most 20% of that purchase — within your spending rules and the **information cap** (Settings, default ₦1,000). It compares information offers, and declines (not urgent, too expensive, outside your limits) with a reason. It then **acts on the report**: genuine extra use → a purchase sized for the current rate; avoidable use → minimal relief at the normal rate only if the meter is nearly out, plus what you should fix. It never buys the same information twice, and buying nothing is a valid outcome. Both planners and the AI's tools follow the same rules; code enforces them whatever the model asks.
+
+**Procurement inspection** ([`procurement.ts`](src/server/views/procurement.ts)): every purchase page shows each step from recorded backend data only, with gaps marked, and **Request without paying** re-sends the agent's exact request with no payment and a fresh id to show the provider's live response.
 
 ---
 
@@ -210,17 +250,18 @@ One Next.js 16 application with hard internal module boundaries. Providers are s
 
 ```
 src/
-├── app/                       Overview, Agent (+ runs/[id]), Household, Accounts, Transactions, Settings
+├── app/                       Overview, Agent (+ runs/[id]), Household, Accounts, Providers, Transactions, Settings
 │   └── api/
-│       ├── providers/[providerId]/   quote, x402 purchase, fulfilment retry
+│       ├── providers/                registry listing; [providerId]/ service document, quote, x402 purchase, retry
+│       ├── services/[providerId]/    x402-protected information services (meter diagnostic)
 │       ├── agent/runs/               start/list runs, run log, runs/[id]/events (SSE)
-│       ├── purchases/[id]/[action]   approve (terms hash) / decline / recover
+│       ├── purchases/[id]/[action]   approve (terms hash) / decline / recover / probe-unpaid
 │       └── funding-guard/            on-chain allowance status, grant, revoke
 ├── components/                Design system, devices, run console, approval cards, settings
 └── server/
     ├── agent/                 Engine, explanations; runtime/ (executor, planners, tools, run log)
     ├── payments/              x402 buyer, Funding guard, wallet reads, Horizon confirmation
-    ├── providers/             Six provider modules, registry, x402 seller, quotes
+    ├── providers/             Six utility + two diagnostic providers, registry, catalog, x402 seller, quotes, service handler
     ├── household/             Spending policy, state, seed
     ├── transactions/          Purchases, approvals (binding, expiry), sweep, events
     ├── usage/  demo/  views/  db/
@@ -229,9 +270,9 @@ scripts/  tests/  tests/e2e/  drizzle/  docs/
 
 **Stack:** Next.js 16, React 19, TypeScript, Tailwind CSS 4, Drizzle ORM on SQLite (`@libsql/client`), Zod 4, `@x402/*` 2.30, `@stellar/stellar-sdk` 17, OpenAI SDK (used for both Gemini and OpenAI), Vitest, Playwright + axe-core.
 
-**Data model** ([`schema.ts`](src/server/db/schema.ts)) adds to the original household tables: `agent_runs`, `agent_run_events` (append-only, ordered), `provider_quotes`, `funding_guards`, and on `purchases` the run, quote binding, approval deadline and approval terms/hash. Purchases keep three separate status fields: lifecycle `stage`, `payment_status`, `fulfilment_status`.
+**Data model** ([`schema.ts`](src/server/db/schema.ts)) adds to the original household tables: `agent_runs`, `agent_run_events` (append-only, ordered), `provider_quotes`, `funding_guards`, `meter_profiles` (provider-side ground truth), and on `purchases` the service type, run, quote binding, approval deadline and approval terms/hash. Purchases keep three separate status fields: lifecycle `stage`, `payment_status`, `fulfilment_status`.
 
-Design notes: [`docs/upgrade-m0-assessment.md`](docs/upgrade-m0-assessment.md) (engineering assessment and plan) and [`docs/milestone-0-architecture.md`](docs/milestone-0-architecture.md) (original).
+Design notes: [`docs/amendment-a0-procurement-architecture.md`](docs/amendment-a0-procurement-architecture.md) (procurement amendment), [`docs/upgrade-m0-assessment.md`](docs/upgrade-m0-assessment.md) (engineering assessment and plan) and [`docs/milestone-0-architecture.md`](docs/milestone-0-architecture.md) (original).
 
 ---
 
@@ -259,8 +300,8 @@ Live scripts call the running app: `APP_BASE_URL=http://localhost:3000 pnpm demo
 ## Testing
 
 ```bash
-pnpm check                # typecheck + 226 unit/integration tests (no network, no funds)
-pnpm test:e2e             # 26 Playwright tests (no funds spent)
+pnpm check                # typecheck + 292 unit/integration tests (no network, no funds)
+pnpm test:e2e             # 29 Playwright tests (no funds spent)
 E2E_LIVE=1 pnpm test:e2e  # adds the full live browser journey (spends test USDC)
 ```
 
@@ -289,7 +330,7 @@ All configuration is server-side and validated at startup ([`env.ts`](src/server
 | `AGENT_STELLAR_SECRET` / `_PUBLIC` | `wallets:setup` | Agent payer wallet |
 | `TREASURY_STELLAR_SECRET` / `_PUBLIC`, `FUNDING_GUARD_FLOAT_TARGET_USDC` | `wallets:setup`, `1` | Funding guard |
 | `DEMO_EMPTY_WALLET_SECRET` / `_PUBLIC` | `wallets:setup` | Empty-wallet scenario |
-| `PROVIDER_*_PAYTO` | `wallets:setup` | The registry of provider receiving wallets (trust anchor) |
+| `PROVIDER_*_PAYTO` | `wallets:setup` | The registry of provider receiving wallets (trust anchor), including GridSense and MeterLab |
 
 ---
 
@@ -335,9 +376,34 @@ Stellar supports two agentic-payment protocols ([docs](https://developers.stella
 
 ---
 
+## Procurement acceptance criteria
+
+How each criterion of the procurement amendment is met, and where it is proven.
+
+| # | Criterion | Evidence |
+| --- | --- | --- |
+| 1 | Identifies a household need from actual state | `need.identified` run events from real forecasts; `tests/procurement-decisions.test.ts` |
+| 2 | Dynamically discovers a relevant provider | HTTP discovery of the registry and service documents; `tests/provider-network.test.ts` |
+| 3 | Distinguishes free metadata from paid services | Endpoints marked free/paid; discovery releases nothing (tested) |
+| 4 | Obtains a paid service through an actual x402 request | Live: diagnostic and utility purchases on Stellar testnet; `tests/information-services.test.ts` |
+| 5 | Provider returns HTTP 402 before releasing | Live **Request without paying**; inspection shows the stored 402 |
+| 6 | Policy engine independently authorises or rejects | 11 ordered checks before signing, recorded per purchase; information cap |
+| 7 | A genuine Stellar testnet payment settles when authorised | Facilitator settlement + Horizon confirmation; transaction links |
+| 8 | Release only after payment verification | Settle-then-fulfil handler; one settlement per payment |
+| 9 | The agent uses the acquired resource to continue | Re-decision with the report (`planner.reassessed`); stuck heater vs guests buy differently |
+| 10 | Can reject or defer a purchase | Not urgent / too expensive / outside limits; scenarios and tests |
+| 11 | Compares alternatives | Two providers per utility and two diagnostic offers; options considered with reasons |
+| 12 | Payments and fulfilment are auditable | Separate payment and fulfilment records, receipts, run log, procurement inspection |
+| 13 | The judge can observe the process in real time | Agent Operations live stream; inspection; e2e tests |
+| 14 | Why per-request machine payments are central | Paid resources exist only behind x402; the demo shows the 402 with and without payment |
+| 15 | Original household capabilities intact | Full regression suites and live provider checks |
+
+---
+
 ## Known limitations
 
 - **Simulated utilities and demo providers.** No real DisCo, VTU or mobile-network integration.
+- **Gemini free tier.** The configured key allows 20 model requests per day per model, about one full AI run. The AI's live procurement run on the stuck-heater scenario (discover → buy the ₦300 diagnostic → quote ₦1,500 of minimal relief) was cut short by this quota before it paid for the electricity; the deterministic planner completes the same flow, live.
 - **Live AI runs use model credit.** Without a working key the AI planner stops safely (for example `model_no_credits`); the deterministic planner runs the same tools, rules and payments. AI behaviour is also proven with a scripted model in tests. Model availability varies: if Google reports high demand for a model, set `GEMINI_MODEL` to another one your key lists.
 - **Single household, no authentication.**
 - **Per-process concurrency guard** (plus database unique constraints); multi-instance deployment needs a database-level lock.
@@ -354,6 +420,7 @@ Stellar supports two agentic-payment protocols ([docs](https://developers.stella
 - **A page returns 500 after updating.** The database is missing new columns: run `pnpm db:migrate`, then reload.
 - **"Provider answered HTTP 404 instead of 402".** `APP_BASE_URL` points at a different app; match it to where Borderless runs.
 - **AI mode greyed out / `model_no_credits`.** Add `GEMINI_API_KEY` (or `OPENAI_API_KEY` with credit) to `.env.local` and restart `pnpm dev`.
+- **AI run stops with `model_daily_quota`.** The Gemini key is on Google's free tier (20 requests per model per day; an AI run uses 10–15). Enable billing on the Google AI Studio project, wait for the reset time shown in the run, or use the deterministic planner.
 - **Gemini 404 "no longer available" or 503 "high demand".** Set `GEMINI_MODEL` to a current model your key can use (the default is `gemini-3.5-flash`).
 - **"…is missing or invalid. Run `pnpm wallets:setup`."** Run it, then restart `pnpm dev`.
 - **Wallets not found / insufficient funds later.** Testnet was probably reset: `pnpm wallets:status`, then `pnpm wallets:setup`.
