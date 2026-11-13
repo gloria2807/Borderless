@@ -11,7 +11,7 @@ import { summariseBudget } from "../household/policy";
 import { loadHousehold } from "../household/state";
 import { explorerTxUrl } from "../payments/horizon";
 import { TESTNET_USDC } from "../payments/pricing";
-import { PROVIDER_MODULES } from "../providers/registry";
+import { ALL_PROVIDERS, requireProvider } from "../providers/registry";
 import { forecast, type Forecast } from "../usage/forecast";
 import { recentSamples } from "../usage/simulator";
 import type { ExplanationLine } from "../agent/explain";
@@ -101,7 +101,7 @@ export async function getUtilities(householdId: string, simNow: Date): Promise<U
         amountNgn: purchase.amountNgn,
         quantity: purchase.quantity,
         unit: purchase.unit,
-        label: PROVIDER_MODULES[purchase.kind].resolveProduct(purchase.kind === "data" ? { productCode: purchase.productCode } : { amountNgn: purchase.amountNgn }).label,
+        label: requireProvider(purchase.providerId).resolveProduct(purchase.kind === "data" ? { productCode: purchase.productCode } : { amountNgn: purchase.amountNgn }).label,
         at: purchase.simTime.toISOString(),
         balanceBefore: f?.balanceBefore ?? null,
         balanceAfter: f?.balanceAfter ?? null,
@@ -251,7 +251,7 @@ export async function getPurchases(householdId: string, opts: { ids?: string[]; 
   return rows.map(({ p, pay, acc, prov }) => ({
     id: p.id,
     kind: p.kind,
-    label: PROVIDER_MODULES[p.kind].resolveProduct(p.kind === "data" ? { productCode: p.productCode } : { amountNgn: p.amountNgn }).label,
+    label: requireProvider(p.providerId).resolveProduct(p.kind === "data" ? { productCode: p.productCode } : { amountNgn: p.amountNgn }).label,
     providerName: prov.name,
     recipient: acc.identifier,
     network: acc.network,
@@ -346,6 +346,7 @@ export async function getHouseholdOverview(householdId: string) {
     awaitingApproval: attention.filter((p) => p.stage === "awaiting_approval"),
     needsAttention: attention.filter((p) => p.stage === "needs_attention"),
     inFlight: attention.filter((p) => ["requested", "payment_required", "submitted"].includes(p.stage)),
+    providers: await providerStatus(database),
     faults: (Object.keys(DEMO_FAULTS) as DemoFaultKey[]).map((key) => ({ key, label: DEMO_FAULTS[key], enabled: faults.find((f) => f.key === key)?.enabled ?? false })),
     wallet: {
       network: env().STELLAR_NETWORK,
@@ -358,3 +359,14 @@ export async function getHouseholdOverview(householdId: string) {
 }
 
 export type HouseholdOverview = Awaited<ReturnType<typeof getHouseholdOverview>>;
+
+/** Every registered provider with its live (demo) availability. */
+export async function providerStatus(database = db()): Promise<{ id: string; kind: UtilityKind; name: string; available: boolean }[]> {
+  const rows = await database.select().from(s.utilityProviders);
+  return ALL_PROVIDERS.map((m) => ({
+    id: m.definition.id,
+    kind: m.definition.kind,
+    name: m.definition.name,
+    available: rows.find((r) => r.id === m.definition.id)?.available ?? false,
+  }));
+}

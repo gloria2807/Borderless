@@ -12,6 +12,9 @@ export const TEST_KEYS = {
   electricity: Keypair.random().publicKey(),
   airtime: Keypair.random().publicKey(),
   data: Keypair.random().publicKey(),
+  powergrid: Keypair.random().publicKey(),
+  topuphub: Keypair.random().publicKey(),
+  datalink: Keypair.random().publicKey(),
 };
 
 export function configureTestEnv(overrides: Record<string, string> = {}) {
@@ -20,6 +23,9 @@ export function configureTestEnv(overrides: Record<string, string> = {}) {
     AGENT_STELLAR_SECRET: TEST_KEYS.agent.secret(),
     AGENT_STELLAR_PUBLIC: TEST_KEYS.agent.publicKey(),
     PROVIDER_ELECTRICITY_PAYTO: TEST_KEYS.electricity,
+    PROVIDER_POWERGRID_PAYTO: TEST_KEYS.powergrid,
+    PROVIDER_TOPUPHUB_PAYTO: TEST_KEYS.topuphub,
+    PROVIDER_DATALINK_PAYTO: TEST_KEYS.datalink,
     PROVIDER_AIRTIME_PAYTO: TEST_KEYS.airtime,
     PROVIDER_DATA_PAYTO: TEST_KEYS.data,
     DEMO_NGN_PER_TESTNET_USDC: "100000",

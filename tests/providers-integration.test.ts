@@ -14,7 +14,7 @@ import { DEMO_ACCOUNTS, DEMO_HOUSEHOLD_ID } from "@/server/household/seed";
 import { TESTNET_USDC } from "@/server/payments/pricing";
 import { executePurchase } from "@/server/payments/x402-buyer";
 import { fulfilSettlement, handleFulfilmentRetry, handleProviderPurchase } from "@/server/providers/purchase-handler";
-import { PROVIDERS } from "@/server/providers/registry";
+import { DEFAULT_PROVIDER, PROVIDERS } from "@/server/providers/registry";
 import { createPurchase } from "@/server/transactions/purchases";
 import { configureTestEnv, freshDatabase } from "./helpers";
 import { providerFetch } from "./provider-fetch";
@@ -87,7 +87,7 @@ describe.each([
     expect(stl).toMatchObject({ fulfilmentStatus: "failed", fulfilmentAttempts: 1 });
 
     await setFault("provider_fulfilment_failure", false);
-    const res = await handleFulfilmentRetry(kind, new Request("http://provider.test/retry", { method: "POST", body: JSON.stringify({ purchaseId }) }));
+    const res = await handleFulfilmentRetry(DEFAULT_PROVIDER[kind], new Request("http://provider.test/retry", { method: "POST", body: JSON.stringify({ purchaseId }) }));
     expect(res.status).toBe(200);
     const receipt = await res.json();
     expect(receipt).toMatchObject({ simulated: true, purchaseId, payment: { status: "settled" }, fulfilment: { status: "fulfilled", balanceBefore: before, balanceAfter: after } });
@@ -107,7 +107,7 @@ describe("data bundle state on the device", () => {
 
 describe("retry endpoint", () => {
   it("reports no settlement (and no charge) for an unknown purchase", async () => {
-    const res = await handleFulfilmentRetry("airtime", new Request("http://provider.test/retry", { method: "POST", body: JSON.stringify({ purchaseId: "pur_0000000000none" }) }));
+    const res = await handleFulfilmentRetry(DEFAULT_PROVIDER.airtime, new Request("http://provider.test/retry", { method: "POST", body: JSON.stringify({ purchaseId: "pur_0000000000none" }) }));
     expect(res.status).toBe(404);
     expect((await res.json()).code).toBe("no_settlement");
   });

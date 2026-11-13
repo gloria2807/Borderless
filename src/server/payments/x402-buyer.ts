@@ -15,7 +15,8 @@ import type { PaymentPayload, PaymentRequired, PaymentRequirements } from "@x402
 import { createEd25519Signer, InsufficientBalanceError, SimulationFailedError, TrustlineMissingError } from "@x402/stellar";
 import { ExactStellarScheme } from "@x402/stellar/exact/client";
 import { z } from "zod";
-import { agentSecret, env, providerPayTo } from "../config/env";
+import { agentSecret, env } from "../config/env";
+import { providerPayTo } from "../providers/registry";
 import type { Database } from "../db/client";
 import * as s from "../db/schema";
 import type { PaymentStatus, PurchaseStage, FulfilmentStatus } from "../db/schema";
@@ -26,7 +27,7 @@ import type { ProviderReceipt } from "../providers/receipt";
 import { providerQuotePath, providerRetryPath, providerRoutePath } from "../providers/x402-seller";
 import { recordEvent } from "../transactions/events";
 import { confirmOnHorizon, explorerTxUrl } from "./horizon";
-import { readUsdcBalanceAtomic, type WalletBalanceReader } from "./wallet";
+import { readUsdcWallet, type WalletBalanceReader } from "./wallet";
 import { formatAtomic, ngnToTestnetUsdcAtomic, TESTNET_USDC } from "./pricing";
 import { quantity } from "../../lib/format";
 
@@ -188,7 +189,7 @@ export async function executePurchase(db: Database, purchaseId: string, options:
       ...(account.network ? { network: account.network } : {}),
       ...(purchase.kind === "data" ? { productCode: purchase.productCode } : { amountNgn: purchase.amountNgn }),
     };
-    const registryPayTo = providerPayTo(purchase.kind);
+    const registryPayTo = providerPayTo(purchase.providerId);
     const fairAtomic = ngnToTestnetUsdcAtomic(purchase.amountNgn, env().DEMO_NGN_PER_TESTNET_USDC).toString();
     let quote: { quoteId: string; amountAtomic: string; payTo: string; expiresAt: Date } | null =
       purchase.quoteId && purchase.quoteAmountAtomic && purchase.quotePayTo && purchase.quoteExpiresAt && purchase.quoteExpiresAt.getTime() > Date.now() + 15_000
@@ -197,7 +198,7 @@ export async function executePurchase(db: Database, purchaseId: string, options:
     if (!quote) {
       let res: Response;
       try {
-        res = await doFetch(new URL(providerQuotePath(purchase.kind), env().APP_BASE_URL).toString(), {
+        res = await doFetch(new URL(providerQuotePath(purchase.providerId), env().APP_BASE_URL).toString(), {
           method: "POST",
           headers: { "content-type": "application/json", accept: "application/json" },
           body: JSON.stringify(request),
@@ -235,15 +236,15 @@ export async function executePurchase(db: Database, purchaseId: string, options:
       r.amount === expectedAtomic.toString();
 
     // 3. Request the utility. Expect HTTP 402.
-    const url = new URL(providerRoutePath(purchase.kind), env().APP_BASE_URL).toString();
+    const url = new URL(providerRoutePath(purchase.providerId), env().APP_BASE_URL).toString();
     const init = (headers: Record<string, string> = {}): RequestInit => ({
       method: "POST",
       headers: { "content-type": "application/json", accept: "application/json", ...headers },
       body: JSON.stringify(order),
     });
 
-    await options.onStage?.({ stage: "requesting_payment", detail: `POST ${providerRoutePath(purchase.kind)} (expecting HTTP 402)` });
-    await event({ category: "payment", type: "provider.requested", severity: "info", title: `Requested ${purchase.kind} from ${provider.name}`, detail: `POST ${providerRoutePath(purchase.kind)}` });
+    await options.onStage?.({ stage: "requesting_payment", detail: `POST ${providerRoutePath(purchase.providerId)} (expecting HTTP 402)` });
+    await event({ category: "payment", type: "provider.requested", severity: "info", title: `Requested ${purchase.kind} from ${provider.name}`, detail: `POST ${providerRoutePath(purchase.providerId)}` });
     let first: Response;
     try {
       first = await doFetch(url, { ...init(), signal: AbortSignal.timeout(30_000) });
@@ -296,7 +297,14 @@ export async function executePurchase(db: Database, purchaseId: string, options:
     });
 
     // 3b. Full ordered policy check with live evidence (wallet balance), immediately before signing.
-    const balance = await (options.walletBalance ?? readUsdcBalanceAtomic)(payer);
+    let balance: bigint | null;
+    if (options.walletBalance) {
+      balance = await options.walletBalance(payer);
+    } else {
+      const wallet = await readUsdcWallet(payer);
+      if (wallet && !wallet.trustline) throw new StepError("trustline_missing", "The payment wallet has no testnet USDC trustline. Nothing was signed or charged.", "no");
+      balance = wallet?.balanceAtomic ?? null;
+    }
     const finalCheck = evaluateSpendingAuthority(
       {
         kind: purchase.kind,
@@ -478,7 +486,7 @@ async function recordSuccess(
   const confirmation = await horizon({
     txHash,
     from: expected?.payer ?? pay?.payer ?? "",
-    to: expected?.payTo ?? providerPayTo(purchase.kind),
+    to: expected?.payTo ?? providerPayTo(purchase.providerId),
     amountAtomic: expected?.amountAtomic ?? BigInt(receipt.payment.amountAtomic),
   });
   if (confirmation.status === "confirmed") {
@@ -547,7 +555,7 @@ export async function recoverPurchase(db: Database, purchaseId: string, options:
   const event = (e: Omit<Parameters<typeof recordEvent>[1], "householdId" | "purchaseId" | "simTime">) =>
     recordEvent(db, { ...e, householdId: purchase.householdId, purchaseId, simTime: hh?.simulatedNow ?? new Date() });
 
-  const url = new URL(providerRetryPath(purchase.kind), env().APP_BASE_URL).toString();
+  const url = new URL(providerRetryPath(purchase.providerId), env().APP_BASE_URL).toString();
   await event({ category: "fulfilment", type: "fulfilment.retry", severity: "info", title: "Retrying fulfilment — no new payment", detail: "Asking the provider to release the utility for the payment it already received." });
   let res: Response;
   try {

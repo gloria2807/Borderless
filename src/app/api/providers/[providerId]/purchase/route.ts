@@ -6,10 +6,10 @@ export const dynamic = "force-dynamic";
 
 /** x402-protected purchase. The order must redeem a quote from this provider. */
 export async function POST(request: Request, ctx: { params: Promise<{ providerId: string }> }) {
-  const kind = parseProviderId((await ctx.params).providerId);
-  if (!kind) return notFound();
+  const provider = parseProviderId((await ctx.params).providerId);
+  if (!provider) return notFound();
   try {
-    return await handleProviderPurchase(kind, request);
+    return await handleProviderPurchase(provider, request);
   } catch (err) {
     return errorResponse(err);
   }

@@ -6,7 +6,7 @@ import { VirtualPhone } from "@/components/devices/phone";
 import { PageHeader, Panel } from "@/components/ui/primitives";
 import { dayTime, naira, quantity, UTILITY_NAMES } from "@/lib/format";
 import { DEMO_HOUSEHOLD } from "@/server/api";
-import { PROVIDER_MODULES } from "@/server/providers/registry";
+import { DEFAULT_PROVIDER } from "@/server/providers/registry";
 import { getHouseholdOverview } from "@/server/views/household";
 
 export const metadata: Metadata = { title: "Household" };
@@ -24,7 +24,7 @@ export default async function HouseholdPage() {
       {/* Subgrid keeps each row (device, top-up, history) aligned across the three columns. */}
       <div className="grid gap-x-6 gap-y-10 lg:grid-cols-3 lg:grid-rows-[auto_1fr_auto_auto] lg:gap-y-4">
         {o.utilities.map((u) => {
-          const options = PROVIDER_MODULES[u.kind].listProducts().map((p) => ({
+          const options = DEFAULT_PROVIDER[u.kind].listProducts().map((p) => ({
             value: u.kind === "data" ? p.code : String(p.amountNgn),
             label: u.kind === "data" ? p.label : naira(p.amountNgn),
             amountNgn: p.amountNgn,

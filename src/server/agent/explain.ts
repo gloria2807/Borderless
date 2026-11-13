@@ -10,6 +10,7 @@
  *    provider error or wrongful deduction, which we have no evidence for.
  */
 import type { UtilityKind } from "../db/schema";
+import { providerById } from "../providers/registry";
 import { RECENT_WINDOW_HOURS } from "../usage/forecast";
 import type { Forecast } from "../usage/forecast";
 import type { Decision, Deferral, PlannedPurchase } from "./engine";
@@ -145,7 +146,11 @@ export function explain(decision: Decision): Explanation {
       text: `Budget: ${naira(decision.budgetImpact.remainingBeforeNgn)} remaining; my spending authority has ${naira(decision.budgetImpact.agentAuthorityBeforeNgn)} left.`,
     });
   }
-  for (const p of decision.selected) lines.push({ kind: "decision", utility: p.kind, text: describePurchase(p, decision) });
+  for (const p of decision.selected) {
+    lines.push({ kind: "decision", utility: p.kind, text: describePurchase(p, decision) });
+    const why = describeProviderChoice(p, decision);
+    if (why) lines.push(why);
+  }
   for (const d of decision.deferred) lines.push(describeDeferral(d, decision));
   if (decision.selected.length > 0) {
     lines.push({ kind: "decision", utility: null, text: `After this, ${naira(decision.budgetImpact.remainingAfterNgn)} of the budget will remain.` });
@@ -159,6 +164,24 @@ export function explain(decision: Decision): Explanation {
   const headline = headlineFor(decision);
   if (lines.length === 0) lines.push({ kind: "observation", utility: null, text: "Electricity, airtime and data all have comfortable balances. No action needed." });
   return { headline, lines, reasoning: lines.map((l) => l.text).join(" ") };
+}
+
+/** Why this provider, when more than one could have served the need. */
+function describeProviderChoice(p: PlannedPurchase, decision: Decision): ExplanationLine | null {
+  const name = (id: string) => providerById(id)?.definition.name ?? id;
+  const ofKind = decision.candidates.filter((c) => c.kind === p.kind);
+  const others = [...new Set(ofKind.filter((c) => c.product.providerId !== p.product.providerId).map((c) => c.product.providerId))];
+  if (others.length === 0) return null;
+  const chosen = name(p.product.providerId);
+  const excludedBy = (code: string) =>
+    others.filter((id) => ofKind.filter((c) => c.product.providerId === id).every((c) => c.violations.some((v) => v.code === code)));
+  const list = (ids: string[]) => `${ids.map(name).join(" and ")} ${ids.length > 1 ? "are" : "is"}`;
+
+  const down = excludedBy("provider_unavailable");
+  if (down.length) return { kind: "constraint", utility: p.kind, text: `${list(down)} unavailable right now, so I'm buying from ${chosen}.` };
+  const unapproved = excludedBy("provider_not_approved");
+  if (unapproved.length === others.length) return { kind: "constraint", utility: p.kind, text: `Buying from ${chosen}: ${list(unapproved)} not on your approved list.` };
+  return { kind: "decision", utility: p.kind, text: `I compared ${others.length + 1} providers; ${chosen} gives the household the best value for this need.` };
 }
 
 function headlineFor(d: Decision): string {

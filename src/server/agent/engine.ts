@@ -40,6 +40,8 @@ export interface UtilitySnapshot {
   providerId: string;
   providerName: string;
   providerAvailable: boolean;
+  /** Every provider that can serve this account, with live availability. */
+  providers?: Record<string, { name: string; available: boolean }>;
   network: MobileNetwork | null;
   forecast: Forecast;
   openPurchase: { id: string; stage: PurchaseStage; amountNgn: number } | null;
@@ -166,11 +168,13 @@ function evaluateCandidates(u: UtilitySnapshot, input: DecisionInput, ledger: Pu
   const preferred = PREFERRED_COVERAGE_HOURS[u.kind];
   return (input.products[u.kind] ?? []).map((product) => {
     const coverageHours = coverageAfter(u, product);
+    const providerId = product.providerId ?? u.providerId;
+    const providerAvailable = u.providers?.[providerId]?.available ?? (providerId === u.providerId && u.providerAvailable);
     const authority = evaluateSpendingAuthority(
       {
         kind: u.kind,
-        providerId: u.providerId,
-        providerAvailable: u.providerAvailable,
+        providerId,
+        providerAvailable,
         network: u.network,
         amountNgn: product.amountNgn,
         initiatedBy: "agent",
@@ -192,7 +196,8 @@ function evaluateCandidates(u: UtilitySnapshot, input: DecisionInput, ledger: Pu
   });
 }
 
-const byPrice = (a: Candidate, b: Candidate) => a.product.amountNgn - b.product.amountNgn;
+// Equal prices (e.g. two providers selling ₦2,000 of power): prefer the one that delivers more.
+const byPrice = (a: Candidate, b: Candidate) => a.product.amountNgn - b.product.amountNgn || b.coverageHours - a.coverageHours;
 const byCoverage = (a: Candidate, b: Candidate) => b.coverageHours - a.coverageHours || byPrice(a, b);
 
 /**

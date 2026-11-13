@@ -6,14 +6,15 @@
  * from the quote it redeems, and a quote can be redeemed only once.
  */
 import { and, eq } from "drizzle-orm";
-import { env, providerPayTo } from "../config/env";
+import { env } from "../config/env";
 import { db } from "../db/client";
 import * as s from "../db/schema";
 import type { UtilityKind } from "../db/schema";
+import type { ProviderModule } from "./types";
 import { newId } from "../lib/ids";
 import { formatAtomic, TESTNET_USDC } from "../payments/pricing";
 import { quoteRequestSchema } from "./order";
-import { PROVIDER_MODULES } from "./registry";
+import { providerPayTo, requireProvider } from "./registry";
 import { ProductError } from "./types";
 import { quoteOrderAtomic } from "./x402-seller";
 
@@ -37,8 +38,9 @@ export interface ProviderQuote {
   note: string;
 }
 
-export function toProviderQuote(row: typeof s.providerQuotes.$inferSelect, kind: UtilityKind): ProviderQuote {
-  const m = PROVIDER_MODULES[kind];
+export function toProviderQuote(row: typeof s.providerQuotes.$inferSelect): ProviderQuote {
+  const m = requireProvider(row.providerId);
+  const kind: UtilityKind = m.definition.kind;
   const product = m.resolveProduct(kind === "data" ? { productCode: row.productCode } : { amountNgn: row.amountNgn });
   return {
     quoteId: row.id,
@@ -56,9 +58,9 @@ export function toProviderQuote(row: typeof s.providerQuotes.$inferSelect, kind:
   };
 }
 
-export async function handleQuoteRequest(kind: UtilityKind, request: Request): Promise<Response> {
-  const module = PROVIDER_MODULES[kind];
+export async function handleQuoteRequest(module: ProviderModule, request: Request): Promise<Response> {
   const provider = module.definition;
+  const kind = provider.kind;
   const parsed = quoteRequestSchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return json(400, { code: "invalid_quote_request", message: parsed.error.issues.map((i) => i.message).join("; ") });
   const req = parsed.data;
@@ -95,12 +97,12 @@ export async function handleQuoteRequest(kind: UtilityKind, request: Request): P
       amountNgn: product.amountNgn,
       quantity: product.quantity,
       unit: product.unit,
-      amountAtomic: quoteOrderAtomic(kind, req).toString(),
+      amountAtomic: quoteOrderAtomic(provider.id, req).toString(),
       asset: TESTNET_USDC.contract,
-      payTo: providerPayTo(kind),
+      payTo: providerPayTo(provider.id),
       issuedAt,
       expiresAt: new Date(issuedAt.getTime() + QUOTE_TTL_SECONDS * 1000),
     })
     .returning();
-  return json(200, toProviderQuote(row!, kind));
+  return json(200, toProviderQuote(row!));
 }

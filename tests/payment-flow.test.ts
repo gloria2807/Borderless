@@ -6,6 +6,7 @@ import { DEMO_ACCOUNTS, DEMO_HOUSEHOLD_ID } from "@/server/household/seed";
 import { executePurchase } from "@/server/payments/x402-buyer";
 import { handleProviderPurchase } from "@/server/providers/purchase-handler";
 import { handleQuoteRequest, type ProviderQuote } from "@/server/providers/quote-handler";
+import { DEFAULT_PROVIDER } from "@/server/providers/registry";
 import { createPurchase, PolicyDeniedError, PurchaseConflictError } from "@/server/transactions/purchases";
 import { TESTNET_USDC } from "@/server/payments/pricing";
 import { configureTestEnv, freshDatabase, TEST_KEYS } from "./helpers";
@@ -24,7 +25,7 @@ const METER = { accountIdentifier: "45012345678" };
 const LINE = { accountIdentifier: "+2348030000417", network: "mtn" as const };
 
 async function quote(kind: "electricity" | "airtime" | "data", body: Record<string, unknown>): Promise<ProviderQuote> {
-  const res = await handleQuoteRequest(kind, req(`prv_demo_${kind}/quote`, body));
+  const res = await handleQuoteRequest(DEFAULT_PROVIDER[kind], req(`prv_demo_${kind}/quote`, body));
   expect(res.status).toBe(200);
   return (await res.json()) as ProviderQuote;
 }
@@ -48,19 +49,19 @@ describe("provider quote endpoint (free) validates before any payment", () => {
     ["invalid amount", "electricity", { ...METER, amountNgn: 1234 }, 422],
     ["wrong network for the line", "airtime", { ...LINE, network: "glo", amountNgn: 500 }, 422],
   ] as const)("rejects a %s", async (_l, kind, body, status) => {
-    const res = await handleQuoteRequest(kind, req(`prv_demo_${kind}/quote`, body));
+    const res = await handleQuoteRequest(DEFAULT_PROVIDER[kind], req(`prv_demo_${kind}/quote`, body));
     expect(res.status).toBe(status);
   });
   it("returns 503 when the provider is unavailable", async () => {
     await database.update(s.utilityProviders).set({ available: false }).where(eq(s.utilityProviders.kind, "electricity"));
-    const res = await handleQuoteRequest("electricity", req("prv_demo_electricity/quote", { ...METER, amountNgn: 3000 }));
+    const res = await handleQuoteRequest(DEFAULT_PROVIDER.electricity, req("prv_demo_electricity/quote", { ...METER, amountNgn: 3000 }));
     expect(res.status).toBe(503);
   });
 });
 
 describe("purchase endpoint redeems exactly one valid quote", () => {
   const order = (q: ProviderQuote, extra: Record<string, unknown> = {}) => ({ ...METER, amountNgn: 3000, purchaseId: "pur_0000000000aaaa", quoteId: q.quoteId, ...extra });
-  const purchase = (body: unknown, headers: Record<string, string> = {}) => handleProviderPurchase("electricity", req("prv_demo_electricity/purchase", body, headers));
+  const purchase = (body: unknown, headers: Record<string, string> = {}) => handleProviderPurchase(DEFAULT_PROVIDER.electricity, req("prv_demo_electricity/purchase", body, headers));
 
   it("rejects an order without a quote", async () => {
     expect((await purchase({ ...METER, amountNgn: 3000, purchaseId: "pur_0000000000aaaa" })).status).toBe(400);
@@ -108,7 +109,7 @@ describe("provider idempotency", () => {
   it("refuses to take a second payment for a purchase that already settled", async () => {
     await seedSettlement("failed");
     const res = await handleProviderPurchase(
-      "electricity",
+      DEFAULT_PROVIDER.electricity,
       req("prv_demo_electricity/purchase", { ...METER, amountNgn: 3000, purchaseId: "pur_0000000000bbbb", quoteId: "qt_0000000000whatever" }, { "payment-signature": "anything" }),
     );
     expect(res.status).toBe(409);
@@ -193,7 +194,7 @@ describe("buyer fails closed before signing", () => {
     const { result, pf } = await run({
       quote: async (request, body) => {
         const { handleQuoteRequest: h } = await import("@/server/providers/quote-handler");
-        const res = await h("electricity", new Request(request.url, { method: "POST", body: JSON.stringify(body) }));
+        const res = await h(DEFAULT_PROVIDER.electricity, new Request(request.url, { method: "POST", body: JSON.stringify(body) }));
         const q = (await res.json()) as ProviderQuote;
         return new Response(JSON.stringify({ ...q, amountNgn: 3500, payment: { ...q.payment, amountAtomic: "350000" } }), { status: 200 });
       },

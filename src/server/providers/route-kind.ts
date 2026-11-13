@@ -1,9 +1,9 @@
-import type { UtilityKind } from "../db/schema";
 import { providerById } from "./registry";
+import type { ProviderModule } from "./types";
 
-/** Resolve a provider id from the URL to the utility it serves (null = no such provider). */
-export function parseProviderId(value: string): UtilityKind | null {
-  return providerById(value)?.definition.kind ?? null;
+/** Resolve a provider id from the URL to its provider instance (null = no such provider). */
+export function parseProviderId(value: string): ProviderModule | null {
+  return providerById(value) ?? null;
 }
 
 export const notFound = () =>

@@ -13,7 +13,10 @@ import type * as s from "../db/schema";
 export type Unit = "kWh" | "NGN" | "MB";
 
 export interface Product {
+  /** Unique within its provider. */
   code: string;
+  /** The provider that sells this product (several providers can serve one utility). */
+  providerId: string;
   kind: UtilityKind;
   label: string;
   amountNgn: number;
@@ -32,6 +35,10 @@ export interface ProviderDefinition {
   minAmountNgn: number;
   maxAmountNgn: number;
   unit: Unit;
+  /** Environment variable holding this provider's receiving wallet (G…). */
+  payToEnv: string;
+  /** One-line description of what distinguishes this provider's offer (shown to agent and UI). */
+  offerSummary: string;
 }
 
 export class ProductError extends Error {

@@ -4,7 +4,7 @@ import { z } from "zod";
 import type { Database } from "./db/client";
 import * as s from "./db/schema";
 import { MOBILE_NETWORKS, UTILITY_KINDS } from "./db/schema";
-import { PROVIDERS } from "./providers/registry";
+import { ALL_PROVIDERS } from "./providers/registry";
 import { recordEvent } from "./transactions/events";
 
 export const settingsSchema = z
@@ -61,8 +61,8 @@ export async function updateSettings(db: Database, householdId: string, input: S
         priorities: input.priorities,
         approvedServices: input.approvedServices,
         approvedNetworks: input.approvedNetworks,
-        // Providers follow the approved services (one demo provider per service).
-        approvedProviderIds: input.approvedServices.map((k) => PROVIDERS[k].id),
+        // Providers follow the approved services (every demo provider of an approved service).
+        approvedProviderIds: ALL_PROVIDERS.filter((m) => input.approvedServices.includes(m.definition.kind)).map((m) => m.definition.id),
         updatedAt: new Date(),
       })
       .where(eq(s.agentPolicies.householdId, householdId));

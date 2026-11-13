@@ -31,6 +31,9 @@ const baseSchema = z.object({
   PROVIDER_ELECTRICITY_PAYTO: z.string().regex(STELLAR_PUBLIC_KEY).optional(),
   PROVIDER_AIRTIME_PAYTO: z.string().regex(STELLAR_PUBLIC_KEY).optional(),
   PROVIDER_DATA_PAYTO: z.string().regex(STELLAR_PUBLIC_KEY).optional(),
+  PROVIDER_POWERGRID_PAYTO: z.string().regex(STELLAR_PUBLIC_KEY).optional(),
+  PROVIDER_TOPUPHUB_PAYTO: z.string().regex(STELLAR_PUBLIC_KEY).optional(),
+  PROVIDER_DATALINK_PAYTO: z.string().regex(STELLAR_PUBLIC_KEY).optional(),
   AGENT_STELLAR_PUBLIC: z.string().regex(STELLAR_PUBLIC_KEY).optional(),
   // AI planner (OpenAI). The API key itself is read lazily by openaiApiKey().
   OPENAI_MODEL: z.string().min(1).default("gpt-5.4-mini"),
@@ -82,18 +85,15 @@ export function openaiApiKey(): string | null {
   return key && key.length > 20 ? key : null;
 }
 
-export function providerPayTo(kind: "electricity" | "airtime" | "data"): string {
-  const e = env();
-  const value =
-    kind === "electricity"
-      ? e.PROVIDER_ELECTRICITY_PAYTO
-      : kind === "airtime"
-        ? e.PROVIDER_AIRTIME_PAYTO
-        : e.PROVIDER_DATA_PAYTO;
-  if (!value) {
-    throw new ConfigurationError(
-      `PROVIDER_${kind.toUpperCase()}_PAYTO is not configured. Run \`pnpm wallets:setup\`.`,
-    );
+/**
+ * A provider's registered receiving wallet, read from the named environment variable.
+ * This registry — not anything a provider says in a quote or a 402 — is the trust anchor
+ * for where the agent may send money.
+ */
+export function payToFromEnv(varName: string): string {
+  const value = process.env[varName]?.trim();
+  if (!value || !STELLAR_PUBLIC_KEY.test(value)) {
+    throw new ConfigurationError(`${varName} is missing or invalid. Run \`pnpm wallets:setup\`.`);
   }
   return value;
 }

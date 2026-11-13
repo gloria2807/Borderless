@@ -35,6 +35,8 @@ export interface ScenarioDefinition {
     manualApprovalThresholdNgn: number;
   }>;
   utilities: Record<UtilityKind, UtilitySeed>;
+  /** Providers that start the scenario unavailable (demo outage). */
+  providersDown?: string[];
 }
 
 const BASE_UTILITIES: Record<UtilityKind, UtilitySeed> = {
@@ -87,6 +89,15 @@ export const SCENARIOS: ScenarioDefinition[] = [
     expect: "Borderless parks the purchase and waits for you to approve or decline it.",
     budget: { amountNgn: 15_000, priorSpendNgn: 5_000 },
     policy: { manualApprovalThresholdNgn: 1_000 },
+    utilities: { ...BASE_UTILITIES, electricity: { balance: 3, perHour: 0.32 }, data: { balance: 2_500, perHour: 22, expiresInHours: 9 * 24 } },
+  },
+  {
+    id: "provider-outage",
+    name: "Provider outage",
+    summary: "Electricity is low and Demo PowerGrid Vend, usually the better-value seller, is down.",
+    expect: "Borderless sees the outage and buys from the other approved electricity provider instead.",
+    budget: { amountNgn: 15_000, priorSpendNgn: 5_000 },
+    providersDown: ["prv_demo_powergrid"],
     utilities: { ...BASE_UTILITIES, electricity: { balance: 3, perHour: 0.32 }, data: { balance: 2_500, perHour: 22, expiresInHours: 9 * 24 } },
   },
   {

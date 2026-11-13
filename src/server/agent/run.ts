@@ -7,11 +7,11 @@
 import { and, eq, inArray } from "drizzle-orm";
 import type { Database } from "../db/client";
 import * as s from "../db/schema";
-import type { UtilityKind } from "../db/schema";
+import type { MobileNetwork, UtilityKind } from "../db/schema";
 import { loadHousehold } from "../household/state";
 import { newId } from "../lib/ids";
 import { executePurchase, type BuyerOptions, type ExecuteResult } from "../payments/x402-buyer";
-import { PROVIDER_MODULES } from "../providers/registry";
+import { providersFor } from "../providers/registry";
 import type { Product } from "../providers/types";
 import { recordEvent } from "../transactions/events";
 import { createPurchase, OPEN_STAGES, PolicyDeniedError, PurchaseConflictError } from "../transactions/purchases";
@@ -44,6 +44,10 @@ export async function buildDecisionInput(db: Database, householdId: string): Pro
     .from(s.purchases)
     .where(and(eq(s.purchases.householdId, householdId), inArray(s.purchases.stage, OPEN_STAGES)));
 
+  const providerRows = await db.select().from(s.utilityProviders);
+  const servesAccount = (kind: UtilityKind, network: MobileNetwork | null) =>
+    providersFor(kind).filter((m) => kind === "electricity" || (network !== null && m.definition.networks.includes(network)));
+
   const utilities: UtilitySnapshot[] = [];
   for (const { account, balance, provider } of rows) {
     const samples = await recentSamples(db, account.id, now);
@@ -54,6 +58,9 @@ export async function buildDecisionInput(db: Database, householdId: string): Pro
       providerId: provider.id,
       providerName: provider.name,
       providerAvailable: provider.available,
+      providers: Object.fromEntries(
+        servesAccount(account.kind, account.network).map((m) => [m.definition.id, { name: m.definition.name, available: providerRows.find((r) => r.id === m.definition.id)?.available ?? false }]),
+      ),
       network: account.network,
       forecast: forecast(
         { kind: account.kind, balance: balance.balance, unit: balance.unit, baselinePerHour: balance.baselineUsagePerHour, expiresAt: balance.expiresAt },
@@ -64,8 +71,9 @@ export async function buildDecisionInput(db: Database, householdId: string): Pro
     });
   }
 
+  // Products from every provider that can serve each account (several providers compete).
   const products = Object.fromEntries(
-    Object.entries(PROVIDER_MODULES).map(([kind, m]) => [kind, m.listProducts()]),
+    utilities.map((u) => [u.kind, servesAccount(u.kind, u.network).flatMap((m) => m.listProducts())]),
   ) as Record<UtilityKind, Product[]>;
 
   return { now, utilities, priorities: state.priorities, policy: state.policy, budget: state.budget, ledger: state.ledger, products };
@@ -160,6 +168,7 @@ export async function runAgent(
           householdId,
           kind: plan.kind,
           ...(plan.kind === "data" ? { productCode: plan.product.code } : { amountNgn: plan.product.amountNgn }),
+          providerId: plan.product.providerId,
           initiatedBy: "agent",
           decisionId,
           idempotencyKey: `${decisionId}:${plan.kind}`,

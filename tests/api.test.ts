@@ -52,7 +52,7 @@ describe("settings", () => {
     const o = await getHouseholdOverview(DEMO_HOUSEHOLD_ID);
     expect(o.household.name).toBe("Okafor Household");
     expect(o.policy).toMatchObject({ autoPurchaseEnabled: false, perPurchaseLimitNgn: 3_000, approvedNetworks: ["mtn", "airtel"] });
-    expect(o.policy.approvedProviderIds).toEqual(["prv_demo_electricity", "prv_demo_data"]);
+    expect(o.policy.approvedProviderIds).toEqual(["prv_demo_electricity", "prv_demo_powergrid", "prv_demo_data", "prv_demo_datalink"]);
     expect(o.priorities).toEqual(["data", "electricity", "airtime"]);
     const [ev] = await database.select().from(s.activityEvents).where(eq(s.activityEvents.type, "settings.updated"));
     expect(ev?.detail).toMatch(/automatic purchasing turned off/);

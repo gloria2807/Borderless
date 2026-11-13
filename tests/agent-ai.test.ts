@@ -127,7 +127,7 @@ describe("the AI cannot move money outside policy", () => {
       [
         { calls: [{ name: "purchase_utility", args: { quote_id: "qt_0000000000000000", reason: "trust me" } }] },
         { calls: [{ name: "purchase_utility", args: { quote_id: "qt_0000000000000000", reason: "pay elsewhere", pay_to: "GATTACKER", amount_ngn: 1 } }] },
-        { calls: [{ name: "request_quote", args: { utility: "electricity", product_code: "elec_999999" } }] },
+        { calls: [{ name: "request_quote", args: { utility: "electricity", provider_id: "prv_demo_electricity", product_code: "elec_999999" } }] },
         { calls: [{ name: "finish", args: { summary: "Nothing bought.", monitoring_next: "n/a" } }] },
       ],
       { buyer: { fetchImpl } },
@@ -146,7 +146,7 @@ describe("the AI cannot move money outside policy", () => {
     const fetchImpl = pf.fetchImpl;
     const r = await run(
       [
-        { calls: [{ name: "request_quote", args: { utility: "electricity", product_code: "elec_2000" } }] },
+        { calls: [{ name: "request_quote", args: { utility: "electricity", provider_id: "prv_demo_electricity", product_code: "elec_2000" } }] },
         (h) => ({ calls: [{ name: "purchase_utility", args: { quote_id: lastToolResult(h).quote_id, reason: "Electricity is low." } }] }),
         (h) => {
           expect(lastToolResult(h)).toMatchObject({ status: "refused" });
@@ -168,7 +168,7 @@ describe("the AI cannot move money outside policy", () => {
     const fetchImpl = pf.fetchImpl;
     const r = await run(
       [
-        { calls: [{ name: "request_quote", args: { utility: "electricity", product_code: "elec_2000" } }] },
+        { calls: [{ name: "request_quote", args: { utility: "electricity", provider_id: "prv_demo_electricity", product_code: "elec_2000" } }] },
         (h) => ({ calls: [{ name: "purchase_utility", args: { quote_id: lastToolResult(h).quote_id, reason: "Low meter." } }] }),
         (h) => {
           expect(lastToolResult(h)).toMatchObject({ status: "awaiting_owner_approval" });
@@ -186,7 +186,7 @@ describe("the AI cannot move money outside policy", () => {
   it("enforces the task budget across purchases in one run", async () => {
     await database.update(s.agentPolicies).set({ taskBudgetNgn: 1_500 });
     const r = await run([
-      { calls: [{ name: "request_quote", args: { utility: "electricity", product_code: "elec_2000" } }] },
+      { calls: [{ name: "request_quote", args: { utility: "electricity", provider_id: "prv_demo_electricity", product_code: "elec_2000" } }] },
       (h) => ({ calls: [{ name: "propose_purchase", args: { quote_id: lastToolResult(h).quote_id, reason: "check" } }] }),
       (h) => {
         expect(lastToolResult(h).outcome).toBe("would be refused");
@@ -207,7 +207,7 @@ describe("the AI cannot move money outside policy", () => {
     const fetchImpl = pf.fetchImpl;
     const r = await run(
       [
-        { calls: [{ name: "request_quote", args: { utility: "electricity", product_code: "elec_2000" } }] },
+        { calls: [{ name: "request_quote", args: { utility: "electricity", provider_id: "prv_demo_electricity", product_code: "elec_2000" } }] },
         (h) => ({ calls: [{ name: "purchase_utility", args: { quote_id: lastToolResult(h).quote_id, reason: "Low meter." } }] }),
         (h) => {
           expect(lastToolResult(h)).toMatchObject({ status: "failed", payment_status: "failed" });
@@ -236,7 +236,7 @@ describe("quotes", () => {
 
   it("refuses an expired quote", async () => {
     const c = ctx();
-    const q = (await callTool(c, "request_quote", { utility: "airtime", product_code: "air_500" })) as { quote_id: string };
+    const q = (await callTool(c, "request_quote", { utility: "airtime", provider_id: "prv_demo_airtime", product_code: "air_500" })) as { quote_id: string };
     c.quotes.get(q.quote_id)!.expiresAt = Date.now() - 1;
     const r = (await callTool(c, "purchase_utility", { quote_id: q.quote_id, reason: "Top up the line." })) as { status: string; reason: string };
     expect(r).toMatchObject({ status: "refused" });
@@ -245,7 +245,7 @@ describe("quotes", () => {
 
   it("refuses a quote whose payee was tampered with after it was issued", async () => {
     const c = ctx();
-    const q = (await callTool(c, "request_quote", { utility: "airtime", product_code: "air_500" })) as { quote_id: string };
+    const q = (await callTool(c, "request_quote", { utility: "airtime", provider_id: "prv_demo_airtime", product_code: "air_500" })) as { quote_id: string };
     c.quotes.get(q.quote_id)!.payTo = TEST_KEYS.data; // simulate a changed payee
     const r = (await callTool(c, "purchase_utility", { quote_id: q.quote_id, reason: "Top up the line." })) as { status: string; reason: string };
     expect(r.reason).toMatch(/registered wallet/);

@@ -36,6 +36,9 @@ const WALLETS: WalletSpec[] = [
   { label: "Electricity provider", secretVar: "PROVIDER_ELECTRICITY_SECRET", publicVar: "PROVIDER_ELECTRICITY_PAYTO", needsUsdc: false },
   { label: "Airtime provider", secretVar: "PROVIDER_AIRTIME_SECRET", publicVar: "PROVIDER_AIRTIME_PAYTO", needsUsdc: false },
   { label: "Data provider", secretVar: "PROVIDER_DATA_SECRET", publicVar: "PROVIDER_DATA_PAYTO", needsUsdc: false },
+  { label: "PowerGrid provider", secretVar: "PROVIDER_POWERGRID_SECRET", publicVar: "PROVIDER_POWERGRID_PAYTO", needsUsdc: false },
+  { label: "TopUp Hub provider", secretVar: "PROVIDER_TOPUPHUB_SECRET", publicVar: "PROVIDER_TOPUPHUB_PAYTO", needsUsdc: false },
+  { label: "DataLink provider", secretVar: "PROVIDER_DATALINK_SECRET", publicVar: "PROVIDER_DATALINK_PAYTO", needsUsdc: false },
 ];
 
 // ── .env.local handling (preserves unrelated lines) ─────────────────────────

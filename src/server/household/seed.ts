@@ -7,7 +7,7 @@ import type { Database } from "../db/client";
 import * as s from "../db/schema";
 import type { UtilityKind } from "../db/schema";
 import { DEFAULT_SCENARIO_ID, SCENARIOS, scenarioById, type ScenarioDefinition } from "../demo/scenarios";
-import { PROVIDERS } from "../providers/registry";
+import { ALL_PROVIDERS, PROVIDERS } from "../providers/registry";
 import { recordEvent } from "../transactions/events";
 
 export const DEMO_HOUSEHOLD_ID = "hh_demo";
@@ -27,7 +27,7 @@ export async function seedDemoHousehold(db: Database, scenarioId: string = DEFAU
   const now = new Date(DEMO_SIM_START);
 
   await db.insert(s.utilityProviders).values(
-    Object.values(PROVIDERS).map((p) => ({
+    ALL_PROVIDERS.map(({ definition: p }) => ({
       id: p.id,
       kind: p.kind,
       name: p.name,
@@ -35,7 +35,7 @@ export async function seedDemoHousehold(db: Database, scenarioId: string = DEFAU
       networks: p.networks,
       minAmountNgn: p.minAmountNgn,
       maxAmountNgn: p.maxAmountNgn,
-      available: true,
+      available: !(scenario.providersDown ?? []).includes(p.id),
     })),
   );
 
@@ -65,7 +65,7 @@ export async function seedDemoHousehold(db: Database, scenarioId: string = DEFAU
     priorities: ["electricity", "data", "airtime"],
     approvedServices: ["electricity", "airtime", "data"],
     approvedNetworks: ["mtn"],
-    approvedProviderIds: Object.values(PROVIDERS).map((p) => p.id),
+    approvedProviderIds: ALL_PROVIDERS.map((m) => m.definition.id),
   });
 
   await db.insert(s.utilityAccounts).values([

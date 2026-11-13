@@ -5,7 +5,7 @@ import type { PurchaseStage, UtilityKind } from "../db/schema";
 import { evaluateSpendingAuthority, type PolicyCheck, type Violation } from "../household/policy";
 import { loadHousehold } from "../household/state";
 import { newId } from "../lib/ids";
-import { resolveProduct } from "../providers/registry";
+import { resolveProviderProduct } from "../providers/registry";
 import { recordEvent } from "./events";
 
 /** Stages that hold the utility "busy" — a new purchase for the same account must wait. */
@@ -38,6 +38,8 @@ export interface CreatePurchaseInput {
   idempotencyKey?: string;
   /** Agent run making this purchase (task budget applies). */
   runId?: string;
+  /** Which provider to buy from (defaults to the account's provider). */
+  providerId?: string;
   /** Provider quote this purchase redeems (the buyer re-validates it before signing). */
   quote?: { quoteId: string; amountAtomic: string; payTo: string; expiresAt: Date };
 }
@@ -63,8 +65,9 @@ export async function createPurchase(db: Database, input: CreatePurchaseInput): 
         .from(s.utilityAccounts)
         .where(and(eq(s.utilityAccounts.householdId, input.householdId), eq(s.utilityAccounts.kind, input.kind)));
       if (!account) throw new Error(`Household has no ${input.kind} account`);
-      const [provider] = await tx.select().from(s.utilityProviders).where(eq(s.utilityProviders.id, account.providerId));
-      if (!provider) throw new Error(`Provider ${account.providerId} not found`);
+      const providerId = input.providerId ?? account.providerId;
+      const [provider] = await tx.select().from(s.utilityProviders).where(eq(s.utilityProviders.id, providerId));
+      if (!provider || provider.kind !== input.kind) throw new Error(`Provider ${providerId} does not serve ${input.kind}`);
 
       const [open] = await tx
         .select({ id: s.purchases.id })
@@ -72,7 +75,7 @@ export async function createPurchase(db: Database, input: CreatePurchaseInput): 
         .where(and(eq(s.purchases.accountId, account.id), inArray(s.purchases.stage, OPEN_STAGES)));
       if (open) throw new PurchaseConflictError(open.id);
 
-      const product = resolveProduct(input.kind, input);
+      const product = resolveProviderProduct(provider.id, input);
       const authority = evaluateSpendingAuthority(
         {
           kind: input.kind,

@@ -17,8 +17,8 @@ import * as s from "../db/schema";
 import type { UtilityKind } from "../db/schema";
 import { newId } from "../lib/ids";
 import { isFaultEnabled } from "../demo/faults";
-import { PROVIDER_MODULES, PROVIDERS, resolveProduct } from "./registry";
-import { ProductError, type Product, type Tx } from "./types";
+import { requireProvider } from "./registry";
+import { ProductError, type Product, type ProviderModule, type Tx } from "./types";
 import { fulfilmentRetrySchema, providerOrderSchema, type ProviderOrder } from "./order";
 import { createRequestContext } from "./http-adapter";
 import { getSeller, type PricedOrder } from "./x402-seller";
@@ -40,9 +40,9 @@ const fromInstructions = (r: HTTPResponseInstructions) =>
 const globalLocks = globalThis as unknown as { __borderlessProviderLocks?: Set<string> };
 const inFlight = (globalLocks.__borderlessProviderLocks ??= new Set());
 
-export async function handleProviderPurchase(kind: UtilityKind, request: Request): Promise<Response> {
-  const module = PROVIDER_MODULES[kind];
+export async function handleProviderPurchase(module: ProviderModule, request: Request): Promise<Response> {
   const provider = module.definition;
+  const kind = provider.kind;
 
   // 1. Validate the order.
   let raw: unknown;
@@ -113,14 +113,14 @@ export async function handleProviderPurchase(kind: UtilityKind, request: Request
   const lockKey = `${provider.id}:${order.purchaseId}`;
   if (context402Only(request)) {
     // Unpaid request: just return the 402 challenge (no lock needed).
-    return challengeOrError(kind, request, priced);
+    return challengeOrError(provider.id, request, priced);
   }
   if (inFlight.has(lockKey)) {
     return json(409, { code: "purchase_in_progress", message: "A payment for this purchase is already being processed." });
   }
   inFlight.add(lockKey);
   try {
-    return await settleAndFulfil(kind, request, priced, product, account.id);
+    return await settleAndFulfil(module, request, priced, product, account.id);
   } finally {
     inFlight.delete(lockKey);
   }
@@ -130,8 +130,8 @@ function context402Only(request: Request): boolean {
   return !request.headers.get("payment-signature") && !request.headers.get("x-payment");
 }
 
-async function challengeOrError(kind: UtilityKind, request: Request, order: PricedOrder): Promise<Response> {
-  const seller = await getSeller(kind);
+async function challengeOrError(providerId: string, request: Request, order: PricedOrder): Promise<Response> {
+  const seller = await getSeller(providerId);
   const result = await seller.processHTTPRequest(createRequestContext(request, order));
   if (result.type === "payment-error") return fromInstructions(result.response);
   // Any other result for an unpaid request would mean the route is misconfigured. Fail closed.
@@ -139,14 +139,15 @@ async function challengeOrError(kind: UtilityKind, request: Request, order: Pric
 }
 
 async function settleAndFulfil(
-  kind: UtilityKind,
+  module: ProviderModule,
   request: Request,
   order: PricedOrder,
-  product: ReturnType<typeof resolveProduct>,
+  product: Product,
   accountId: string,
 ): Promise<Response> {
-  const provider = PROVIDERS[kind];
-  const seller = await getSeller(kind);
+  const provider = module.definition;
+  const kind = provider.kind;
+  const seller = await getSeller(provider.id);
   const context = createRequestContext(request, order);
 
   // 3. Verify with the facilitator. A failure here is definitive: nothing was submitted.
@@ -239,12 +240,12 @@ async function settleAndFulfil(
  * Generic device write: the provider module decides WHAT changes; this applies it
  * atomically (balance guarded by its previous value) and appends a usage record.
  */
-async function applyToDevice(tx: Tx, kind: UtilityKind, product: Product, accountId: string, txHash: string, simNow: Date) {
+async function applyToDevice(tx: Tx, providerId: string, product: Product, accountId: string, txHash: string, simNow: Date) {
   const [balance] = await tx.select().from(s.utilityBalances).where(eq(s.utilityBalances.accountId, accountId));
   if (!balance) throw new Error(`Virtual device for account ${accountId} not found`);
   if (balance.unit !== product.unit) throw new Error(`Unit mismatch: device ${balance.unit}, product ${product.unit}`);
 
-  const outcome = PROVIDER_MODULES[kind].fulfil({ product, balance, txHash, simNow });
+  const outcome = requireProvider(providerId).fulfil({ product, balance, txHash, simNow });
   const updated = await tx
     .update(s.utilityBalances)
     .set({ balance: outcome.balanceAfter, ...outcome.deviceUpdate, updatedAt: new Date() })
@@ -285,8 +286,8 @@ export async function fulfilSettlement(settlementId: string, simNow: Date): Prom
         throw new Error("Simulated provider outage during fulfilment (demo fault injection)");
       }
 
-      const product = resolveProduct(order.kind, order);
-      const outcome = await applyToDevice(tx, order.kind, product, order.accountId, stl.txHash, simNow);
+      const product = requireProvider(stl.providerId).resolveProduct(order);
+      const outcome = await applyToDevice(tx, stl.providerId, product, order.accountId, stl.txHash, simNow);
       await tx.insert(s.fulfilments).values({
         id: newId("ful"),
         purchaseId: stl.purchaseId,
@@ -319,10 +320,10 @@ export async function fulfilSettlement(settlementId: string, simNow: Date): Prom
 }
 
 /** POST /api/providers/:providerId/fulfilment/retry — recovery without a second payment. */
-export async function handleFulfilmentRetry(kind: UtilityKind, request: Request): Promise<Response> {
+export async function handleFulfilmentRetry(module: ProviderModule, request: Request): Promise<Response> {
   const parsed = fulfilmentRetrySchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return json(400, { code: "invalid_request", message: "purchaseId is required." });
-  const provider = PROVIDERS[kind];
+  const provider = module.definition;
   const stl = await findSettlement(provider.id, parsed.data.purchaseId);
   if (!stl) {
     return json(404, { code: "no_settlement", message: "No settled payment exists for this purchase. Nothing was charged." });
@@ -351,8 +352,8 @@ async function buildReceipt(settlementId: string): Promise<ProviderReceipt> {
   if (!stl) throw new Error("Settlement not found");
   const [ful] = await database.select().from(s.fulfilments).where(eq(s.fulfilments.settlementId, settlementId));
   const order = stl.order as ProviderOrder & { kind: UtilityKind; accountId: string };
-  const provider = PROVIDERS[order.kind];
-  const product = resolveProduct(order.kind, order);
+  const provider = requireProvider(stl.providerId).definition;
+  const product = requireProvider(stl.providerId).resolveProduct(order);
   return {
     receiptId: `rcp_${stl.id.slice(4)}`,
     simulated: true,

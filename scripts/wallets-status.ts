@@ -13,6 +13,9 @@ const wallets: [string, string | undefined][] = [
   ["Electricity provider", process.env.PROVIDER_ELECTRICITY_PAYTO],
   ["Airtime provider", process.env.PROVIDER_AIRTIME_PAYTO],
   ["Data provider", process.env.PROVIDER_DATA_PAYTO],
+  ["PowerGrid provider", process.env.PROVIDER_POWERGRID_PAYTO],
+  ["TopUp Hub provider", process.env.PROVIDER_TOPUPHUB_PAYTO],
+  ["DataLink provider", process.env.PROVIDER_DATALINK_PAYTO],
 ];
 
 let problems = 0;

@@ -12,6 +12,7 @@ interface ScenarioOption { id: string; name: string; summary: string; expect: st
 
 interface Props {
   utilities: { kind: Kind; multiplier: number; providerAvailable: boolean }[];
+  providers: { id: string; kind: Kind; name: string; available: boolean }[];
   faults: { key: string; label: string; enabled: boolean }[];
   simNow: string;
   scenario: { active: string; options: ScenarioOption[] };
@@ -24,7 +25,7 @@ const SPEEDS = [0.5, 1, 2, 3, 5];
  * Operator panel for the demo: move simulated time, change usage, inject failures,
  * reset. Everything here is clearly a demo control, not a household feature.
  */
-export function DemoControls({ utilities, faults, scenario, compact }: Props) {
+export function DemoControls({ utilities, providers, faults, scenario, compact }: Props) {
   const ref = useRef<HTMLDialogElement>(null);
   const { run, pending } = useApiAction();
   const [live, setLive] = useState(false);
@@ -188,10 +189,12 @@ export function DemoControls({ utilities, faults, scenario, compact }: Props) {
                     <Toggle checked={f.enabled} label={f.label} disabled={pending} onChange={(v) => run("/api/demo/faults", { body: { fault: f.key, enabled: v } })} />
                   </label>
                 ))}
-                {utilities.map((u) => (
-                  <label key={`out-${u.kind}`} className="flex items-center justify-between gap-3">
-                    <span className="text-[13px] text-fg-2">{UTILITY_NAMES[u.kind]} provider outage</span>
-                    <Toggle checked={!u.providerAvailable} label={`${UTILITY_NAMES[u.kind]} provider outage`} disabled={pending} onChange={(v) => run("/api/demo/faults", { body: { providerOutage: u.kind, enabled: v } })} />
+                {providers.map((p) => (
+                  <label key={`out-${p.id}`} className="flex items-center justify-between gap-3">
+                    <span className="text-[13px] text-fg-2">
+                      {p.name} outage <span className="text-fg-3">· {UTILITY_NAMES[p.kind]}</span>
+                    </span>
+                    <Toggle checked={!p.available} label={`${p.name} outage`} disabled={pending} onChange={(v) => run("/api/demo/faults", { body: { providerOutage: p.id, enabled: v } })} />
                   </label>
                 ))}
               </div>

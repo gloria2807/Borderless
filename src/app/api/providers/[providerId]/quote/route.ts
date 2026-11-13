@@ -6,10 +6,10 @@ export const dynamic = "force-dynamic";
 
 /** Free: issue a short-lived quote. Purchases must redeem one. */
 export async function POST(request: Request, ctx: { params: Promise<{ providerId: string }> }) {
-  const kind = parseProviderId((await ctx.params).providerId);
-  if (!kind) return notFound();
+  const provider = parseProviderId((await ctx.params).providerId);
+  if (!provider) return notFound();
   try {
-    return await handleQuoteRequest(kind, request);
+    return await handleQuoteRequest(provider, request);
   } catch (err) {
     return errorResponse(err);
   }

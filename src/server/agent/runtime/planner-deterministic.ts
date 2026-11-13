@@ -33,7 +33,7 @@ export async function runDeterministicPlanner(ctx: ToolContext): Promise<Planner
 
   for (const plan of decision.selected) {
     await call("compare_offers", { utility: plan.kind });
-    const quote = (await call("request_quote", { utility: plan.kind, product_code: plan.product.code })) as { quote_id?: string };
+    const quote = (await call("request_quote", { utility: plan.kind, provider_id: plan.product.providerId, product_code: plan.product.code })) as { quote_id?: string };
     if (!quote.quote_id) continue;
     const why = explanation.lines.find((l) => l.kind === "decision" && l.utility === plan.kind)?.text ?? `Restores ${plan.kind}.`;
     const bought = (await call("purchase_utility", { quote_id: quote.quote_id, reason: why })) as { purchase_id?: string; status?: string };
