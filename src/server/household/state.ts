@@ -28,6 +28,7 @@ export async function loadHousehold(db: Database, householdId: string) {
       stage: s.purchases.stage,
       paymentStatus: s.purchases.paymentStatus,
       createdAt: s.purchases.simTime,
+      runId: s.purchases.runId,
     })
     .from(s.purchases)
     .where(
@@ -46,6 +47,10 @@ export async function loadHousehold(db: Database, householdId: string) {
     approvedServices: policyRow.approvedServices,
     approvedNetworks: policyRow.approvedNetworks,
     approvedProviderIds: policyRow.approvedProviderIds,
+    dailyAgentBudgetNgn: policyRow.dailyAgentBudgetNgn,
+    taskBudgetNgn: policyRow.taskBudgetNgn,
+    reserveNgn: policyRow.reserveNgn,
+    maxPerUtilityNgn: policyRow.maxPerUtilityNgn,
   };
   const budget: BudgetRules = {
     amountNgn: budgetRow.amountNgn,

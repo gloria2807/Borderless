@@ -2,7 +2,7 @@ import { and, eq, inArray } from "drizzle-orm";
 import type { Database } from "../db/client";
 import * as s from "../db/schema";
 import type { PurchaseStage, UtilityKind } from "../db/schema";
-import { evaluateSpendingAuthority, type Violation } from "../household/policy";
+import { evaluateSpendingAuthority, type PolicyCheck, type Violation } from "../household/policy";
 import { loadHousehold } from "../household/state";
 import { newId } from "../lib/ids";
 import { resolveProduct } from "../providers/registry";
@@ -13,7 +13,10 @@ export const OPEN_STAGES: PurchaseStage[] = ["awaiting_approval", "requested", "
 
 export class PolicyDeniedError extends Error {
   readonly code = "policy_denied";
-  constructor(readonly violations: Violation[]) {
+  constructor(
+    readonly violations: Violation[],
+    readonly checks: PolicyCheck[] = [],
+  ) {
     super(violations.map((v) => v.message).join(" "));
   }
 }
@@ -33,6 +36,8 @@ export interface CreatePurchaseInput {
   initiatedBy: "agent" | "owner" | "script";
   decisionId?: string;
   idempotencyKey?: string;
+  /** Agent run making this purchase (task budget applies). */
+  runId?: string;
 }
 
 export type PurchaseRow = typeof s.purchases.$inferSelect;
@@ -79,8 +84,10 @@ export async function createPurchase(db: Database, input: CreatePurchaseInput): 
         state.budget,
         state.ledger,
         state.household.simulatedNow,
+        undefined,
+        { runId: input.runId },
       );
-      if (authority.outcome === "deny") throw new PolicyDeniedError(authority.violations);
+      if (authority.outcome === "deny") throw new PolicyDeniedError(authority.violations, authority.checks);
 
       const id = newId("pur");
       const stage: PurchaseStage = authority.outcome === "require_approval" ? "awaiting_approval" : "requested";
@@ -90,6 +97,7 @@ export async function createPurchase(db: Database, input: CreatePurchaseInput): 
           id,
           householdId: input.householdId,
           decisionId: input.decisionId ?? null,
+          runId: input.runId ?? null,
           accountId: account.id,
           providerId: provider.id,
           kind: input.kind,

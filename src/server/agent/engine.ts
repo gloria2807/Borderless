@@ -239,7 +239,12 @@ const VIOLATION_TO_DEFERRAL: Partial<Record<ViolationCode, DeferralReason>> = {
   exceeds_budget: "insufficient_budget",
   budget_period_inactive: "insufficient_budget",
   exceeds_agent_authority: "insufficient_authority",
+  exceeds_task_budget: "insufficient_authority",
+  exceeds_daily_budget: "insufficient_authority",
+  exceeds_reserve: "insufficient_budget",
   exceeds_per_purchase_limit: "over_purchase_limit",
+  exceeds_utility_limit: "over_purchase_limit",
+  recipient_not_permitted: "network_not_approved",
 };
 // Most fundamental constraint first.
 const DEFERRAL_ORDER: DeferralReason[] = [

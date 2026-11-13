@@ -132,7 +132,7 @@ export async function wipeAll(db: Database): Promise<void> {
   await db.run(sql`PRAGMA foreign_keys = OFF`);
   for (const table of [
     s.activityEvents, s.receipts, s.fulfilments, s.providerSettlements, s.payments, s.purchases,
-    s.agentDecisions, s.usageRecords, s.utilityBalances, s.utilityAccounts, s.agentPolicies,
+    s.agentRunEvents, s.agentRuns, s.agentDecisions, s.usageRecords, s.utilityBalances, s.utilityAccounts, s.agentPolicies,
     s.householdBudgets, s.householdMembers, s.households, s.utilityProviders, s.demoScenarios, s.demoFaults,
   ]) {
     await db.delete(table);

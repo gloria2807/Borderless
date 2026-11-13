@@ -19,13 +19,14 @@ import { agentSecret, env, providerPayTo } from "../config/env";
 import type { Database } from "../db/client";
 import * as s from "../db/schema";
 import type { PaymentStatus, PurchaseStage, FulfilmentStatus } from "../db/schema";
-import { evaluateSpendingAuthority } from "../household/policy";
+import { evaluateSpendingAuthority, type PolicyCheck } from "../household/policy";
 import { loadHousehold } from "../household/state";
 import { newId } from "../lib/ids";
 import type { ProviderReceipt } from "../providers/receipt";
 import { providerRoutePath, quoteOrderAtomic } from "../providers/x402-seller";
 import { recordEvent } from "../transactions/events";
 import { confirmOnHorizon, explorerTxUrl } from "./horizon";
+import { readUsdcBalanceAtomic, type WalletBalanceReader } from "./wallet";
 import { formatAtomic, ngnToTestnetUsdcAtomic, TESTNET_USDC } from "./pricing";
 import { quantity } from "../../lib/format";
 
@@ -43,10 +44,25 @@ export interface ExecuteResult {
   receipt: ProviderReceipt | null;
 }
 
+/** Payment-lifecycle checkpoints, reported as they actually happen. */
+export type BuyerStage =
+  | { stage: "requesting_payment"; detail: string }
+  | { stage: "checking_policy"; detail: string; amountAtomic: string; payTo: string; checks: PolicyCheck[] }
+  | { stage: "signing"; detail: string }
+  | { stage: "settling"; detail: string }
+  | { stage: "verifying_fulfilment"; detail: string; txHash: string | null }
+  | { stage: "failed"; detail: string; code: string; charged: "no" | "yes" | "unknown" };
+
 export interface BuyerOptions {
   fetchImpl?: typeof fetch;
   /** Skip Horizon confirmation (unit tests only). */
   horizon?: typeof confirmOnHorizon;
+  /** Wallet balance reader (defaults to Horizon). Injected in tests. */
+  walletBalance?: WalletBalanceReader;
+  /** Agent run that owns this purchase (enables the task budget check). */
+  runId?: string;
+  /** Receives payment-lifecycle checkpoints (agent run event log). */
+  onStage?: (s: BuyerStage) => void | Promise<void>;
 }
 
 const receiptSchema = z
@@ -178,6 +194,7 @@ export async function executePurchase(db: Database, purchaseId: string, options:
       body: JSON.stringify(order),
     });
 
+    await options.onStage?.({ stage: "requesting_payment", detail: `POST ${providerRoutePath(purchase.kind)} (expecting HTTP 402)` });
     await event({ category: "payment", type: "provider.requested", severity: "info", title: `Requested ${purchase.kind} from ${provider.name}`, detail: `POST ${providerRoutePath(purchase.kind)}` });
     let first: Response;
     try {
@@ -230,7 +247,47 @@ export async function executePurchase(db: Database, purchaseId: string, options:
       data: { amountAtomic: offered.amount, payTo: offered.payTo, maxTimeoutSeconds: offered.maxTimeoutSeconds },
     });
 
+    // 3b. Full ordered policy check with live evidence (wallet balance), immediately before signing.
+    const balance = await (options.walletBalance ?? readUsdcBalanceAtomic)(payer);
+    const finalCheck = evaluateSpendingAuthority(
+      {
+        kind: purchase.kind,
+        providerId: provider.id,
+        providerAvailable: provider.available,
+        network: account.network,
+        amountNgn: purchase.amountNgn,
+        initiatedBy: purchase.initiatedBy,
+        ownerApproved: purchase.initiatedBy === "owner" || undefined,
+      },
+      state.policy,
+      state.budget,
+      state.ledger,
+      simTime,
+      purchaseId,
+      {
+        runId: options.runId ?? purchase.runId ?? undefined,
+        quote: { valid: true, detail: `Provider asked for ${formatAtomic(offered.amount)} USDC to ${offered.payTo.slice(0, 6)}…, exactly our quote.` },
+        wallet: { availableAtomic: balance, requiredAtomic: BigInt(offered.amount) },
+      },
+    );
+    await options.onStage?.({
+      stage: "checking_policy",
+      detail: finalCheck.outcome === "deny" ? finalCheck.violations.map((v) => v.message).join(" ") : "All spending rules passed.",
+      amountAtomic: offered.amount,
+      payTo: offered.payTo,
+      checks: finalCheck.checks,
+    });
+    if (finalCheck.outcome === "deny") {
+      const v = finalCheck.violations[0]!;
+      throw new StepError(
+        v.code === "insufficient_wallet_balance" ? "insufficient_testnet_funds" : v.code === "wallet_unverified" ? "wallet_unverified" : "policy_denied",
+        `${finalCheck.violations.map((x) => x.message).join(" ")} Nothing was signed or charged.`,
+        "no",
+      );
+    }
+
     // 4. Sign (server-side). Simulation catches insufficient funds / missing trustline before anything is submitted.
+    await options.onStage?.({ stage: "signing", detail: "Signing the Soroban authorisation entry with the agent wallet (server-side)." });
     let payload: PaymentPayload;
     try {
       payload = await http.createPaymentPayload({ ...paymentRequired, accepts: [offered] });
@@ -244,6 +301,7 @@ export async function executePurchase(db: Database, purchaseId: string, options:
     // 5. Submit. From here on the outcome may be "charged", so failures become "unknown" until reconciled.
     await update(db, purchaseId, { stage: "submitted", paymentStatus: "submitted" });
     await upsertPayment(db, purchaseId, { status: "submitted" });
+    await options.onStage?.({ stage: "settling", detail: "Signed payment sent; the facilitator is verifying and settling it on Stellar testnet." });
     await event({ category: "payment", type: "payment.submitted", severity: "info", title: "Payment authorised and sent", detail: "Signed Soroban authorisation sent to the provider for facilitator verification and settlement." });
 
     let paid: Response;
@@ -256,6 +314,7 @@ export async function executePurchase(db: Database, purchaseId: string, options:
     const body = await readBody(paid);
     if (paid.status === 200) {
       const settle = http.getPaymentSettleResponse((n) => paid.headers.get(n));
+      await options.onStage?.({ stage: "verifying_fulfilment", detail: "Settlement reported; confirming on Horizon and reading the provider receipt.", txHash: settle.transaction ?? null });
       return await recordSuccess(db, purchase, body as ProviderReceipt, { txHash: settle.transaction, payer, payTo: expectedPayTo, amountAtomic: expectedAtomic }, horizon, event, false);
     }
 
@@ -310,10 +369,12 @@ export async function executePurchase(db: Database, purchaseId: string, options:
     if (step.charged === "no") {
       await update(db, purchaseId, { stage: "failed", paymentStatus: "failed", failureCode: step.code, failureMessage: step.message });
       await upsertPayment(db, purchaseId, { status: "failed", errorCode: step.code, errorMessage: step.message });
+      await options.onStage?.({ stage: "failed", detail: step.message, code: step.code, charged: "no" });
       await event({ category: "payment", type: "payment.failed", severity: "critical", title: "Purchase stopped — not charged", detail: step.message, data: { code: step.code } });
     } else {
       await update(db, purchaseId, { stage: "needs_attention", paymentStatus: "unknown", failureCode: step.code, failureMessage: step.message });
       await upsertPayment(db, purchaseId, { status: "unknown", errorCode: step.code, errorMessage: step.message });
+      await options.onStage?.({ stage: "failed", detail: step.message, code: step.code, charged: step.charged });
       await event({ category: "payment", type: "payment.unknown", severity: "warning", title: "Payment outcome needs checking", detail: step.message, data: { code: step.code } });
     }
     return summarise(db, purchaseId);

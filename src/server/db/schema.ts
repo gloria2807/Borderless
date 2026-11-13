@@ -114,6 +114,16 @@ export const agentPolicies = sqliteTable("agent_policies", {
     .references(() => households.id, { onDelete: "cascade" }),
   autoPurchaseEnabled: integer("auto_purchase_enabled", { mode: "boolean" }).notNull(),
   perPurchaseLimitNgn: integer("per_purchase_limit_ngn").notNull(),
+  /** Most the agent may spend in one simulated day, across all runs. */
+  dailyAgentBudgetNgn: integer("daily_agent_budget_ngn").notNull().default(8_000),
+  /** Most a single agent run (task) may spend. */
+  taskBudgetNgn: integer("task_budget_ngn").notNull().default(6_000),
+  /** Budget the agent must always leave untouched. */
+  reserveNgn: integer("reserve_ngn").notNull().default(0),
+  /** Optional per-utility ceiling for a single purchase. JSON Partial<Record<UtilityKind, number>>. */
+  maxPerUtilityNgn: text("max_per_utility_ngn", { mode: "json" }).$type<Partial<Record<UtilityKind, number>>>().notNull().default({}),
+  /** How long an owner approval request stays open before it lapses (no answer = declined). */
+  approvalTtlSeconds: integer("approval_ttl_seconds").notNull().default(180),
   /** Hard ceiling on everything the agent may spend within the active budget period. */
   overallAgentLimitNgn: integer("overall_agent_limit_ngn").notNull(),
   /** Purchases strictly above this amount require explicit owner approval. */
@@ -235,6 +245,8 @@ export const purchases = sqliteTable(
       .notNull()
       .references(() => households.id, { onDelete: "cascade" }),
     decisionId: text("decision_id").references(() => agentDecisions.id),
+    /** The agent run that made this purchase, if any. */
+    runId: text("run_id").references(() => agentRuns.id),
     accountId: text("account_id")
       .notNull()
       .references(() => utilityAccounts.id),
@@ -378,6 +390,84 @@ export const receipts = sqliteTable(
 );
 
 // ─── Timeline & demo ─────────────────────────────────────────────────────────
+
+// ─── Agent runs ──────────────────────────────────────────────────────────────
+
+export const AGENT_RUN_STATUSES = ["running", "completed", "failed", "interrupted"] as const;
+export type AgentRunStatus = (typeof AGENT_RUN_STATUSES)[number];
+
+/** One execution of the agent on a task. Persisted so history survives refresh and restart. */
+export const agentRuns = sqliteTable(
+  "agent_runs",
+  {
+    id: id(),
+    householdId: text("household_id")
+      .notNull()
+      .references(() => households.id, { onDelete: "cascade" }),
+    /** "ai" = language-model planner; "deterministic" = rule-based planner (no AI). */
+    mode: text("mode", { enum: ["ai", "deterministic"] }).notNull(),
+    model: text("model"),
+    task: text("task").notNull(),
+    trigger: text("trigger", { enum: ["manual", "tick", "scenario"] }).notNull(),
+    status: text("status", { enum: AGENT_RUN_STATUSES }).notNull(),
+    summary: text("summary"),
+    error: text("error"),
+    steps: integer("steps").notNull().default(0),
+    /** Token usage reported by the model provider. JSON. */
+    usage: text("usage", { mode: "json" }),
+    simTime: integer("sim_time", { mode: "timestamp_ms" }).notNull(),
+    startedAt: integer("started_at", { mode: "timestamp_ms" }).notNull(),
+    endedAt: integer("ended_at", { mode: "timestamp_ms" }),
+  },
+  (t) => [index("runs_household_idx").on(t.householdId, t.startedAt)],
+);
+
+/** Execution stages shown in Agent Operations. Recorded by the backend as they happen. */
+export const RUN_STAGES = [
+  "planning",
+  "observing",
+  "analysing",
+  "discovering",
+  "comparing",
+  "deciding",
+  "requesting_payment",
+  "checking_policy",
+  "awaiting_approval",
+  "signing",
+  "settling",
+  "verifying_fulfilment",
+  "updating_household",
+  "reassessing",
+  "finished",
+] as const;
+export type RunStage = (typeof RUN_STAGES)[number];
+
+/** Append-only, ordered log of what happened during a run. Never edited after insert. */
+export const agentRunEvents = sqliteTable(
+  "agent_run_events",
+  {
+    id: id(),
+    runId: text("run_id")
+      .notNull()
+      .references(() => agentRuns.id, { onDelete: "cascade" }),
+    seq: integer("seq").notNull(),
+    at: integer("at", { mode: "timestamp_ms" }).notNull(),
+    stage: text("stage", { enum: RUN_STAGES }).notNull(),
+    /** e.g. run.started, model.message, tool.called, tool.result, policy.evaluated, payment.*, run.finished */
+    type: text("type").notNull(),
+    utility: text("utility", { enum: UTILITY_KINDS }),
+    tool: text("tool"),
+    input: text("input", { mode: "json" }),
+    result: text("result", { mode: "json" }),
+    decision: text("decision"),
+    reason: text("reason"),
+    paymentStatus: text("payment_status"),
+    txHash: text("tx_hash"),
+    purchaseId: text("purchase_id"),
+    error: text("error"),
+  },
+  (t) => [uniqueIndex("run_events_seq_uq").on(t.runId, t.seq)],
+);
 
 export const activityEvents = sqliteTable(
   "activity_events",

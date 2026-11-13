@@ -32,6 +32,12 @@ const baseSchema = z.object({
   PROVIDER_AIRTIME_PAYTO: z.string().regex(STELLAR_PUBLIC_KEY).optional(),
   PROVIDER_DATA_PAYTO: z.string().regex(STELLAR_PUBLIC_KEY).optional(),
   AGENT_STELLAR_PUBLIC: z.string().regex(STELLAR_PUBLIC_KEY).optional(),
+  // AI planner (OpenAI). The API key itself is read lazily by openaiApiKey().
+  OPENAI_MODEL: z.string().min(1).default("gpt-5.4-mini"),
+  AGENT_REASONING_EFFORT: z.enum(["minimal", "low", "medium", "high"]).default("low"),
+  AGENT_MAX_STEPS: z.coerce.number().int().min(4).max(40).default(18),
+  AGENT_RUN_TIMEOUT_SECONDS: z.coerce.number().int().min(30).max(1800).default(300),
+  AGENT_MODEL_TIMEOUT_SECONDS: z.coerce.number().int().min(5).max(300).default(60),
 });
 
 export type ServerEnv = z.infer<typeof baseSchema>;
@@ -68,6 +74,12 @@ export function agentSecret(): string {
     );
   }
   return secret;
+}
+
+/** OpenAI key for the AI planner. Server-only; never sent to the browser or logged. */
+export function openaiApiKey(): string | null {
+  const key = process.env.OPENAI_API_KEY?.trim();
+  return key && key.length > 20 ? key : null;
 }
 
 export function providerPayTo(kind: "electricity" | "airtime" | "data"): string {
