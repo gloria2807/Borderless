@@ -30,6 +30,36 @@ export default async function ProvidersPage() {
         actions={<TestnetTag />}
       />
 
+      <section aria-labelledby="how-title" className="mb-6 rounded-lg border border-line bg-surface p-5">
+        <h2 id="how-title" className="text-sm font-semibold text-fg">
+          How Borderless buys
+        </h2>
+        <div className="mt-3 grid gap-4 text-[13px] md:grid-cols-2">
+          <div>
+            <p className="text-2xs font-semibold tracking-wide text-fg-3 uppercase">A typical top-up app</p>
+            <ul className="mt-1.5 list-disc space-y-1 pl-5 text-fg-2">
+              <li>Buys from a provider chosen in advance.</li>
+              <li>Usually tops up when a fixed threshold is crossed.</li>
+              <li>Is integrated through accounts, credentials or a checkout set up beforehand.</li>
+              <li>Buys the same thing whatever caused the shortfall.</li>
+            </ul>
+          </div>
+          <div>
+            <p className="text-2xs font-semibold tracking-wide text-green uppercase">Borderless</p>
+            <ul className="mt-1.5 list-disc space-y-1 pl-5 text-fg-2">
+              <li>Observes the household and identifies what it actually needs.</li>
+              <li>Discovers machine-accessible providers and compares their offers.</li>
+              <li>Buys information when it could change the decision — or decides to buy nothing.</li>
+              <li>Pays each provider per request through x402, within your rules, then verifies what it got and reassesses.</li>
+            </ul>
+          </div>
+        </div>
+        <p className="mt-3 border-t border-line-soft pt-3 text-2xs text-fg-3">
+          What this demo proves, and no more: these (simulated) provider services are designed for agent customers, and x402 on Stellar testnet is the payment and access mechanism they
+          actually implement. Without paying, the agent cannot obtain them — open any purchase and use <span className="text-fg-2">Request without paying</span> to see the provider&apos;s HTTP 402.
+        </p>
+      </section>
+
       <div className="mb-6 rounded-lg border border-line bg-surface p-4 text-[13px] text-fg-2">
         <p>
           <span className="font-semibold text-fg">Discovery is free; resources are paid.</span> Borderless reads the registry (

@@ -19,14 +19,14 @@ const STAGES: { key: string; label: string }[] = [
   { key: "analysing", label: "Analysing" },
   { key: "identifying_need", label: "Identifying a need" },
   { key: "discovering", label: "Discovering" },
-  { key: "comparing", label: "Comparing" },
+  { key: "comparing", label: "Evaluating" },
   { key: "deciding", label: "Deciding" },
-  { key: "checking_policy", label: "Policy check" },
+  { key: "checking_policy", label: "Authorising" },
   { key: "awaiting_approval", label: "Approval" },
-  { key: "requesting_payment", label: "HTTP 402" },
-  { key: "signing", label: "Signing" },
-  { key: "settling", label: "Settling" },
-  { key: "verifying_fulfilment", label: "Verifying" },
+  { key: "requesting_payment", label: "Requesting (HTTP 402)" },
+  { key: "signing", label: "Paying · signing" },
+  { key: "settling", label: "Paying · settling" },
+  { key: "verifying_fulfilment", label: "Receiving the service" },
   { key: "updating_household", label: "Household updated" },
   { key: "using_result", label: "Acting on the result" },
   { key: "reassessing", label: "Reassessing" },
@@ -41,9 +41,9 @@ const PHASE: Record<string, { label: string; cls: string }> = {
   analysing: { label: "Forecast", cls: "text-cyan border-cyan/25" },
   identifying_need: { label: "Need", cls: "text-amber border-amber/25" },
   discovering: { label: "Discovery", cls: "text-fg-2 border-line" },
-  comparing: { label: "Discovery", cls: "text-fg-2 border-line" },
+  comparing: { label: "Evaluate", cls: "text-fg-2 border-line" },
   deciding: { label: "Decision", cls: "text-green border-green/30" },
-  checking_policy: { label: "Policy", cls: "text-amber border-amber/25" },
+  checking_policy: { label: "Authorise", cls: "text-amber border-amber/25" },
   awaiting_approval: { label: "Approval", cls: "text-amber border-amber/25" },
   requesting_payment: { label: "Payment", cls: "text-cyan border-cyan/25" },
   signing: { label: "Payment", cls: "text-cyan border-cyan/25" },
@@ -214,6 +214,9 @@ function buildItems(events: RunEventDTO[]): Item[] {
       }
       case "planner.decision":
         items.push({ ...base, title: "Decision (allocation engine)", body: e.reason, tone: "positive", details: <Raw label="Options and budget" value={e.result} /> });
+        break;
+      case "need.identified":
+        items.push({ ...base, title: `Need identified: ${utility(e.utility)}`, body: e.reason, tone: "warning" });
         break;
       case "planner.reassessed":
         items.push({ ...base, title: "Acting on the result", body: e.reason, tone: "info" });
@@ -397,6 +400,9 @@ function PurchaseRow({ p, explorer }: { p: RunPurchaseView; explorer: string }) 
     <li className="flex flex-wrap items-center gap-2 rounded-md border border-line-soft bg-bg-2 px-3 py-2 text-[13px]">
       <Link href={`/transactions/${p.id}`} className="font-semibold hover:underline">
         {p.label}
+      </Link>
+      <Link href={`/transactions/${p.id}#procurement`} className="text-2xs text-cyan hover:underline">
+        Inspect procurement
       </Link>
       <span className="text-fg-3">{p.providerName}</span>
       <span className="mono text-fg-2">{naira(p.amountNgn)}</span>

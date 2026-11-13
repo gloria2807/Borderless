@@ -4,6 +4,7 @@ import { db } from "@/server/db/client";
 import { purchases } from "@/server/db/schema";
 import { executePurchase, recoverPurchase } from "@/server/payments/x402-buyer";
 import { approvePurchase, declinePurchase } from "@/server/transactions/approvals";
+import { probeUnpaid } from "@/server/transactions/probe";
 import { appendRunEvent } from "@/server/agent/runtime/run-log";
 import { payAndLog } from "@/server/agent/runtime/tools";
 
@@ -36,6 +37,9 @@ export const POST = action(async (request, ctx) => {
     case "recover":
       // Never pays again: re-requests fulfilment / reconciles the existing payment only.
       return ok(await recoverPurchase(database, id));
+    case "probe-unpaid":
+      // The same request the agent made, without paying: shows the provider's real HTTP 402.
+      return ok(await probeUnpaid(database, id));
     default:
       return fail(404, "unknown_action", "Unknown action.");
   }

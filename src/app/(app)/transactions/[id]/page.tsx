@@ -11,6 +11,8 @@ import { FULFILMENT_STATUS, PAYMENT_STATUS, STAGE, type Tone } from "@/lib/statu
 import { DEMO_HOUSEHOLD } from "@/server/api";
 import { TESTNET_USDC } from "@/server/payments/pricing";
 import { getPurchaseDetail } from "@/server/views/household";
+import { getProcurement } from "@/server/views/procurement";
+import { ProcurementInspection } from "@/components/transactions/procurement-inspection";
 
 export const dynamic = "force-dynamic";
 
@@ -48,7 +50,7 @@ function StateBlock({ title, tag, tone, heading, body }: { title: string; tag: R
 
 export default async function TransactionPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const detail = await getPurchaseDetail(DEMO_HOUSEHOLD, id);
+  const [detail, procurement] = await Promise.all([getPurchaseDetail(DEMO_HOUSEHOLD, id), getProcurement(DEMO_HOUSEHOLD, id)]);
   if (!detail) notFound();
   const { purchase: p, payment, receipt, events, decisionReasoning, decisionLines } = detail;
   const pay = PAYMENT_STATUS[p.paymentStatus]!;
@@ -103,6 +105,18 @@ export default async function TransactionPage({ params }: { params: Promise<{ id
           body={p.fulfilmentStatus === "failed" && p.failureMessage ? p.failureMessage : ful.hint}
         />
       </div>
+
+      {procurement && (
+        <section id="procurement" aria-labelledby="procurement-title" className="mb-6 scroll-mt-24 rounded-lg border border-line bg-surface p-5">
+          <h2 id="procurement-title" className="text-sm font-semibold text-fg">
+            Procurement inspection
+          </h2>
+          <p className="mt-0.5 text-2xs text-fg-3">How this was bought, step by step, from recorded backend data only. Steps that didn&apos;t happen are marked, not filled in.</p>
+          <div className="mt-2">
+            <ProcurementInspection v={procurement} />
+          </div>
+        </section>
+      )}
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_380px]">
         <div className="space-y-6">

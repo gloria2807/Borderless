@@ -147,3 +147,17 @@ test("providers: the network is discoverable, verified, and marks paid endpoints
   await expect(page).toHaveURL(/\/api\/providers\/prv_demo_electricity\/service$/);
   await expect(page.locator("body")).toContainText('"paid":true');
 });
+
+test("transactions: the procurement inspection shows each step from recorded data", async ({ page, request }) => {
+  await loadScenario(request, "needs-approval");
+  await startDeterministicRun(page); // parks a purchase for approval: nothing paid yet
+  await page.getByRole("link", { name: "Inspect procurement" }).first().click();
+  await expect(page).toHaveURL(/\/transactions\/pur_[0-9a-z]+#procurement$/);
+  const section = page.getByRole("region", { name: "Procurement inspection" });
+  await expect(section.getByText("1. Discovered provider")).toBeVisible();
+  await expect(section.getByText("Verified against registry")).toBeVisible();
+  await expect(section.getByText(/POST \/api\/providers\/prv_demo_\w+\/purchase/)).toBeVisible();
+  await expect(section.getByText("No transaction: nothing was paid.")).toBeVisible();
+  await expect(section.getByText("Nothing was released.")).toBeVisible();
+  await expect(section.getByRole("button", { name: "Request without paying" })).toBeVisible();
+});

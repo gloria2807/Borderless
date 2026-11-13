@@ -325,6 +325,18 @@ export const TOOLS: ToolDefinition[] = [
       const input = await buildDecisionInput(ctx.db, ctx.householdId);
       const state = await loadHousehold(ctx.db, ctx.householdId);
       const summary = summariseBudget(state.budget, state.policy, state.ledger);
+      for (const u of input.utilities) {
+        const f = u.forecast;
+        if (f.urgency !== "critical" && f.urgency !== "low" && !f.unusualUsage) continue;
+        const left = Number.isFinite(f.hoursRemaining) ? `about ${Math.round(f.hoursRemaining)} hours left` : "no end in sight";
+        await event(ctx, {
+          stage: "identifying_need",
+          type: "need.identified",
+          utility: u.kind,
+          decision: f.unusualUsage ? "unexplained_use" : f.urgency,
+          reason: f.unusualUsage ? `${u.kind} use is ${f.usageRatio.toFixed(1)}× usual (${left}); the cause is not visible in hourly totals.` : `${u.kind} is ${f.urgency === "critical" ? "critically low" : "running low"}: ${left}.`,
+        });
+      }
       return {
         household_time: input.now.toISOString(),
         priorities: input.priorities,

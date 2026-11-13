@@ -376,6 +376,15 @@ export async function executePurchase(db: Database, purchaseId: string, options:
         wallet: { availableAtomic: balance, requiredAtomic: BigInt(offered.amount) },
       },
     );
+    // Keep the pre-signing evaluation on the purchase's own record, whichever path bought it.
+    await event({
+      category: "payment",
+      type: "policy.checked",
+      severity: finalCheck.outcome === "deny" ? "warning" : "info",
+      title: finalCheck.outcome === "deny" ? "Spending rules refused the payment" : "Spending rules passed before signing",
+      detail: finalCheck.outcome === "deny" ? finalCheck.violations.map((v) => v.message).join(" ") : `${formatAtomic(offered.amount)} test USDC to ${offered.payTo.slice(0, 6)}…: all checks passed.`,
+      data: { outcome: finalCheck.outcome, checks: finalCheck.checks, amountAtomic: offered.amount, payTo: offered.payTo },
+    });
     await options.onStage?.({
       stage: "checking_policy",
       detail: finalCheck.outcome === "deny" ? finalCheck.violations.map((v) => v.message).join(" ") : "All spending rules passed.",
