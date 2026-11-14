@@ -16,7 +16,10 @@ import { expireApprovals } from "../transactions/approvals";
 /** A run event as sent to the browser (same shape the SSE stream sends). */
 export type RunEventDTO = Omit<RunEventRow, "at"> & { at: string };
 
-export const toEventDTO = (e: RunEventRow): RunEventDTO => ({ ...e, at: e.at.toISOString() });
+/** Tool names before the brief-aligned rename, so older run logs still read correctly. */
+const LEGACY_TOOL_NAMES: Record<string, string> = { discover_providers: "discover_services", propose_purchase: "evaluate_purchase", purchase_utility: "buy_service" };
+
+export const toEventDTO = (e: RunEventRow): RunEventDTO => ({ ...e, tool: e.tool ? (LEGACY_TOOL_NAMES[e.tool] ?? e.tool) : e.tool, at: e.at.toISOString() });
 
 export interface RunSummaryView {
   id: string;

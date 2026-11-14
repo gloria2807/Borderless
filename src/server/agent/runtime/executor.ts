@@ -13,6 +13,7 @@ import type { WalletBalanceReader } from "../../payments/wallet";
 import { runDeterministicPlanner } from "./planner-deterministic";
 import { runAiPlanner, type ChatClient, type PlannerOutcome } from "./planner-openai";
 import { appendRunEvent, createRun, finishRun, markOrphanedRunsInterrupted } from "./run-log";
+import { AgentPausedError, agentPaused } from "../run";
 import type { ToolContext } from "./tools";
 
 export type AgentMode = "ai" | "deterministic";
@@ -28,6 +29,8 @@ export class AiUnavailableError extends Error {
   readonly code = "ai_unavailable";
 }
 
+export { AgentPausedError } from "../run";
+
 const globalRuns = globalThis as unknown as { __borderlessActiveRuns?: Map<string, string> };
 const active = (globalRuns.__borderlessActiveRuns ??= new Map<string, string>()); // householdId → runId
 
@@ -38,7 +41,9 @@ export interface StartRunOptions {
   householdId: string;
   task?: string;
   mode?: AgentMode;
-  trigger?: "manual" | "tick" | "scenario";
+  trigger?: "manual" | "tick" | "scenario" | "low_balance";
+  /** Demo (Scenario C) instruction for the deterministic planner. */
+  directive?: ToolContext["directive"];
   /** Test/injection hooks. */
   client?: ChatClient;
   buyer?: Omit<BuyerOptions, "runId" | "onStage">;
@@ -69,6 +74,7 @@ export async function reconcileOrphanedRuns(db: Database, householdId: string): 
 export async function startAgentRun(db: Database, opts: StartRunOptions): Promise<{ runId: string; done: Promise<PlannerOutcome> }> {
   const existing = active.get(opts.householdId);
   if (existing) throw new AgentRunConflictError(existing);
+  if (await agentPaused(db, opts.householdId)) throw new AgentPausedError();
 
   const mode: AgentMode = opts.mode ?? (aiAvailable() || opts.client ? "ai" : "deterministic");
   let client = opts.client;
@@ -111,6 +117,7 @@ export async function startAgentRun(db: Database, opts: StartRunOptions): Promis
     purchaseIds: [],
     buyer: opts.buyer,
     walletBalance: opts.walletBalance,
+    directive: opts.directive,
   };
 
   const done = (async (): Promise<PlannerOutcome> => {

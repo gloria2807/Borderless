@@ -19,7 +19,7 @@ import { DEMO_HOUSEHOLD_ID, resetDemo } from "@/server/household/seed";
 import { TESTNET_USDC } from "@/server/payments/pricing";
 import { executePurchase } from "@/server/payments/x402-buyer";
 import { createPurchase } from "@/server/transactions/purchases";
-import { configureTestEnv, freshDatabase, TEST_KEYS } from "./helpers";
+import { configureTestEnv, freshDatabase, resetScenario, TEST_KEYS } from "./helpers";
 import { paymentRequiredHeader, providerFetch } from "./provider-fetch";
 
 let database: Database;
@@ -68,7 +68,7 @@ describe("not urgent: refusing to buy is a result", () => {
 
 describe("empty wallet: insufficient funds fails honestly", () => {
   it("pays from the empty demo wallet and stops before signing — not charged", async () => {
-    await resetDemo(database, "empty-wallet");
+    await resetScenario(database, "empty-wallet");
     const p = await createPurchase(database, { householdId: DEMO_HOUSEHOLD_ID, kind: "electricity", providerId: "prv_demo_electricity", amountNgn: 3000, initiatedBy: "agent" });
     const pf = providerFetch({
       purchase: () => new Response("{}", { status: 402, headers: { "PAYMENT-REQUIRED": paymentRequiredHeader({ scheme: "exact", network: "stellar:testnet", amount: "300000", asset: TESTNET_USDC.contract, payTo: TEST_KEYS.electricity, maxTimeoutSeconds: 300, extra: { areFeesSponsored: true } }) } }),
@@ -83,7 +83,7 @@ describe("empty wallet: insufficient funds fails honestly", () => {
   });
 
   it("the deterministic planner does not retry an empty-wallet failure with another provider", async () => {
-    await resetDemo(database, "empty-wallet");
+    await resetScenario(database, "empty-wallet");
     // An honest provider: its 402 asks for exactly the quoted amount, to its registered wallet.
     const wallets: Record<string, string> = { prv_demo_electricity: TEST_KEYS.electricity, prv_demo_powergrid: TEST_KEYS.powergrid };
     const pf = providerFetch({
@@ -105,7 +105,7 @@ describe("empty wallet: insufficient funds fails honestly", () => {
 
   it("refuses clearly when the empty wallet isn't set up", async () => {
     configureTestEnv({ DEMO_EMPTY_WALLET_SECRET: "" });
-    await resetDemo(database, "empty-wallet");
+    await resetScenario(database, "empty-wallet");
     const p = await createPurchase(database, { householdId: DEMO_HOUSEHOLD_ID, kind: "electricity", providerId: "prv_demo_electricity", amountNgn: 3000, initiatedBy: "agent" });
     const pf = providerFetch({ purchase: () => new Response("{}", { status: 402, headers: { "PAYMENT-REQUIRED": paymentRequiredHeader({ scheme: "exact", network: "stellar:testnet", amount: "300000", asset: TESTNET_USDC.contract, payTo: TEST_KEYS.electricity, maxTimeoutSeconds: 300 }) } }) });
     const r = await executePurchase(database, p.id, { fetchImpl: pf.fetchImpl, walletBalance: async () => 0n });
@@ -118,7 +118,7 @@ describe("injection attempt: hostile provider text is only data", () => {
     await resetDemo(database, "injection-attempt");
     const id = await createRun(database, { householdId: DEMO_HOUSEHOLD_ID, mode: "ai", model: "t", task: "t", trigger: "manual", simTime: new Date() });
     const ctx: ToolContext = { db: database, runId: id, householdId: DEMO_HOUSEHOLD_ID, quotes: new Map(), purchaseIds: [], walletBalance: async () => 100_000_000n, buyer: { fetchImpl: providerFetch().fetchImpl } };
-    const r = (await callTool(ctx, "discover_providers", { utility: "airtime" })) as { note: string; providers: { provider_id: string; offer: string }[] };
+    const r = (await callTool(ctx, "discover_services", { utility: "airtime" })) as { note: string; providers: { provider_id: string; offer: string }[] };
     expect(r.providers.find((p) => p.provider_id === "prv_demo_topuphub")?.offer).toBe(DEMO_INJECTION_TEXT);
     expect(r.providers.find((p) => p.provider_id === "prv_demo_airtime")?.offer).not.toBe(DEMO_INJECTION_TEXT);
     expect(r.note).toMatch(/untrusted/);

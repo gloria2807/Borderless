@@ -18,11 +18,11 @@ import { createRun, listRunEvents } from "@/server/agent/runtime/run-log";
 import { callTool, type ToolContext } from "@/server/agent/runtime/tools";
 import type { Database } from "@/server/db/client";
 import * as s from "@/server/db/schema";
-import { DEMO_ACCOUNTS, DEMO_HOUSEHOLD_ID, resetDemo } from "@/server/household/seed";
+import { DEMO_ACCOUNTS, DEMO_HOUSEHOLD_ID } from "@/server/household/seed";
 import { providerById } from "@/server/providers/registry";
 import { handleQuoteRequest } from "@/server/providers/quote-handler";
 import { forecast, type UsageSample } from "@/server/usage/forecast";
-import { configureTestEnv, freshDatabase } from "./helpers";
+import { configureTestEnv, freshDatabase, resetScenario } from "./helpers";
 import { providerFetch } from "./provider-fetch";
 
 let database: Database;
@@ -76,7 +76,7 @@ describe("decision records: options considered and rejected", () => {
     expect(rejected.find((o) => o.amountNgn === 1000)?.reason).toMatch(/less than the 2-day minimum/);
     expect(rejected.find((o) => o.amountNgn === 5000)?.reason).toMatch(/approval/);
     expect(rejected.find((o) => o.providerId === "prv_demo_electricity" && o.amountNgn === 4000)?.reason).toBe("Same price, less service.");
-    expect(elec.impact).toMatchObject({ balanceBefore: 8, balanceAfter: 27, unit: "kWh", costNgn: 4000 });
+    expect(elec.impact).toMatchObject({ balanceBefore: 8, balanceAfter: 25.7, unit: "kWh", costNgn: 4000 });
     expect(elec.impact!.hoursAfter!).toBeGreaterThan(elec.impact!.hoursBefore!);
   });
 
@@ -94,7 +94,7 @@ describe("decision records: options considered and rejected", () => {
   });
 
   it("states 'no purchase needed' for comfortable utilities", async () => {
-    await resetDemo(database, "unusual-data");
+    await resetScenario(database, "unusual-data");
     const d = decide(await buildDecisionInput(database, DEMO_HOUSEHOLD_ID));
     expect(d.notNeeded.map((n) => n.kind).sort()).toEqual(["airtime", "electricity"]);
     expect(explain(d).reasoning).toMatch(/Airtime doesn't need a purchase \(about 12 days left\)/);
@@ -127,8 +127,8 @@ describe("necessity guard (code refuses unnecessary agent purchases)", () => {
     await database.update(s.utilityBalances).set({ balance: 5_000 }).where(eq(s.utilityBalances.accountId, DEMO_ACCOUNTS.airtime));
     const c = ctx();
     const q = (await callTool(c, "request_quote", { utility: "airtime", provider_id: "prv_demo_airtime", product_code: "air_500" })) as { quote_id: string };
-    expect(await callTool(c, "propose_purchase", { quote_id: q.quote_id, reason: "Just in case." })).toMatchObject({ needed: false });
-    const r = (await callTool(c, "purchase_utility", { quote_id: q.quote_id, reason: "Just in case." })) as { status: string; reason: string };
+    expect(await callTool(c, "evaluate_purchase", { quote_id: q.quote_id, reason: "Just in case." })).toMatchObject({ needed: false });
+    const r = (await callTool(c, "buy_service", { quote_id: q.quote_id, reason: "Just in case." })) as { status: string; reason: string };
     expect(r.status).toBe("refused");
     expect(r.reason).toMatch(/not needed/);
     expect(await database.select().from(s.purchases)).toHaveLength(0);
@@ -136,12 +136,12 @@ describe("necessity guard (code refuses unnecessary agent purchases)", () => {
   });
 
   it("refuses to buy more of a utility whose usage is flagged as unusual", async () => {
-    await resetDemo(database, "unusual-data");
+    await resetScenario(database, "unusual-data");
     const id = await createRun(database, { householdId: DEMO_HOUSEHOLD_ID, mode: "ai", model: "t", task: "t", trigger: "manual", simTime: new Date() });
     await database.update(s.agentRuns).set({ id: "run_test" }).where(eq(s.agentRuns.id, id));
     const c = ctx();
     const q = (await callTool(c, "request_quote", { utility: "data", provider_id: "prv_demo_data", product_code: "data_1_5gb_30d" })) as { quote_id: string };
-    const r = (await callTool(c, "purchase_utility", { quote_id: q.quote_id, reason: "Running out fast." })) as { status: string; reason: string };
+    const r = (await callTool(c, "buy_service", { quote_id: q.quote_id, reason: "Running out fast." })) as { status: string; reason: string };
     expect(r.status).toBe("refused");
     expect(r.reason).toMatch(/owner's review/);
   });
@@ -149,13 +149,13 @@ describe("necessity guard (code refuses unnecessary agent purchases)", () => {
   it("allows a utility that genuinely needs it", async () => {
     const c = ctx();
     const q = (await callTool(c, "request_quote", { utility: "electricity", provider_id: "prv_demo_powergrid", product_code: "elec_3000" })) as { quote_id: string };
-    expect(await callTool(c, "propose_purchase", { quote_id: q.quote_id, reason: "Low meter." })).toMatchObject({ needed: true, outcome: "would be allowed" });
+    expect(await callTool(c, "evaluate_purchase", { quote_id: q.quote_id, reason: "Low meter." })).toMatchObject({ needed: true, outcome: "would be allowed" });
   });
 });
 
 describe("adaptive deterministic planner", () => {
   it("re-decides without a provider that fails to quote, and stops before paying when the fallback also fails", async () => {
-    await resetDemo(database, "provider-outage");
+    await resetScenario(database, "provider-outage");
     await database.update(s.utilityProviders).set({ available: true }); // the DB thinks PowerGrid is up…
     const pf = providerFetch({
       // …but its endpoint is down when the agent asks for a quote.

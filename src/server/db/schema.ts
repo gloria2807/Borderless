@@ -113,6 +113,8 @@ export const agentPolicies = sqliteTable("agent_policies", {
     .primaryKey()
     .references(() => households.id, { onDelete: "cascade" }),
   autoPurchaseEnabled: integer("auto_purchase_enabled", { mode: "boolean" }).notNull(),
+  /** Owner paused the agent: no runs, no monitoring purchases; any in-flight run stops before its next step. */
+  agentPaused: integer("agent_paused", { mode: "boolean" }).notNull().default(false),
   perPurchaseLimitNgn: integer("per_purchase_limit_ngn").notNull(),
   /** Most the agent may spend in one simulated day, across all runs. */
   dailyAgentBudgetNgn: integer("daily_agent_budget_ngn").notNull().default(8_000),
@@ -175,6 +177,8 @@ export const utilityAccounts = sqliteTable(
     /** Meter number or MSISDN. */
     identifier: text("identifier").notNull(),
     network: text("network", { enum: MOBILE_NETWORKS }),
+    /** Electricity: the distribution company serving the property (decides which vendors are eligible). */
+    distributionCompany: text("distribution_company"),
     createdAt: createdAt(),
   },
   (t) => [
@@ -457,7 +461,7 @@ export const agentRuns = sqliteTable(
     mode: text("mode", { enum: ["ai", "deterministic"] }).notNull(),
     model: text("model"),
     task: text("task").notNull(),
-    trigger: text("trigger", { enum: ["manual", "tick", "scenario"] }).notNull(),
+    trigger: text("trigger", { enum: ["manual", "tick", "scenario", "low_balance"] }).notNull(),
     status: text("status", { enum: AGENT_RUN_STATUSES }).notNull(),
     summary: text("summary"),
     error: text("error"),

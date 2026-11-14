@@ -18,9 +18,9 @@ import { createRun, listRunEvents } from "@/server/agent/runtime/run-log";
 import { callTool, type ToolContext } from "@/server/agent/runtime/tools";
 import type { Database } from "@/server/db/client";
 import * as s from "@/server/db/schema";
-import { DEMO_ACCOUNTS, DEMO_HOUSEHOLD_ID, resetDemo } from "@/server/household/seed";
+import { DEMO_ACCOUNTS, DEMO_HOUSEHOLD_ID } from "@/server/household/seed";
 import { newId } from "@/server/lib/ids";
-import { configureTestEnv, freshDatabase } from "./helpers";
+import { configureTestEnv, freshDatabase, resetScenario } from "./helpers";
 import { providerFetch } from "./provider-fetch";
 
 let database: Database;
@@ -30,7 +30,7 @@ beforeEach(async () => {
 });
 
 const decideFor = async (scenario: string, diagnoses?: Partial<Record<"electricity", Diagnosis>>) => {
-  await resetDemo(database, scenario);
+  await resetScenario(database, scenario);
   const input = await buildDecisionInput(database, DEMO_HOUSEHOLD_ID);
   const d = decide(diagnoses ? { ...input, diagnoses } : input);
   return { d, e: explain(d), input };
@@ -100,7 +100,7 @@ describe("value of information", () => {
   });
 
   it("declines when the price isn't justified by the purchase at stake", async () => {
-    await resetDemo(database, "electricity-surge");
+    await resetScenario(database, "electricity-surge");
     const input = await buildDecisionInput(database, DEMO_HOUSEHOLD_ID);
     const pricey = { electricity: input.informationOffers!.electricity!.map((o) => ({ ...o, priceNgn: 4_000 })) };
     const d = decide({ ...input, informationOffers: pricey, policy: { ...input.policy, intelligenceCapNgn: 10_000 } });
@@ -108,7 +108,7 @@ describe("value of information", () => {
   });
 
   it("respects the owner's rules for information: not approved, unavailable, or over the cap", async () => {
-    await resetDemo(database, "electricity-surge");
+    await resetScenario(database, "electricity-surge");
     await database.update(s.agentPolicies).set({ intelligenceCapNgn: 200 });
     const input = await buildDecisionInput(database, DEMO_HOUSEHOLD_ID);
     const d = decide(input);
@@ -117,7 +117,7 @@ describe("value of information", () => {
   });
 
   it("picks the other provider when the cheaper one is down", async () => {
-    await resetDemo(database, "electricity-surge");
+    await resetScenario(database, "electricity-surge");
     await database.update(s.utilityProviders).set({ available: false }).where(eq(s.utilityProviders.id, "prv_demo_gridsense"));
     const d = decide(await buildDecisionInput(database, DEMO_HOUSEHOLD_ID));
     const info = d.information[0]!;
@@ -154,7 +154,7 @@ describe("acting on the paid report", () => {
   });
 
   it("reads the latest paid diagnosis from its receipt, and ignores stale ones", async () => {
-    await resetDemo(database, "electricity-surge");
+    await resetScenario(database, "electricity-surge");
     await storeDiagnosis({ finding: "stuck_load", summary: "Stuck heater.", ownerAction: "Fix.", expectedNormalKwhPerHour: 0.32, observedKwhPerHour: 1.02 }, 30);
     expect((await buildDecisionInput(database, DEMO_HOUSEHOLD_ID)).diagnoses?.electricity).toBeUndefined();
     await storeDiagnosis({ finding: "stuck_load", summary: "Stuck heater.", ownerAction: "Fix.", expectedNormalKwhPerHour: 0.32, observedKwhPerHour: 1.02 }, 1);
@@ -164,7 +164,7 @@ describe("acting on the paid report", () => {
 
 describe("planners", () => {
   it("assessment without execution records the decision to buy information first", async () => {
-    await resetDemo(database, "electricity-surge");
+    await resetScenario(database, "electricity-surge");
     const r = await runAgent(database, DEMO_HOUSEHOLD_ID, { execute: false });
     expect(r.decision.outcome).toBe("buying_information");
     expect(r.purchases).toHaveLength(0);
@@ -173,7 +173,7 @@ describe("planners", () => {
   });
 
   it("the deterministic planner tries to buy the diagnostic through x402, and stops honestly if it can't pay", async () => {
-    await resetDemo(database, "electricity-surge");
+    await resetScenario(database, "electricity-surge");
     const pf = providerFetch({
       purchase: () =>
         new Response("{}", {
@@ -188,11 +188,11 @@ describe("planners", () => {
     expect(tools).toEqual(expect.arrayContaining(["discover_information_services", "buy_information"]));
     expect(pf.purchases().map((c) => c.url)).toEqual(["/api/services/prv_demo_gridsense/meter-diagnostic"]);
     expect(events.some((e) => e.type === "planner.reassessed")).toBe(false); // no report, no re-decision
-    expect(tools).not.toContain("purchase_utility"); // never bought electricity blind
+    expect(tools).not.toContain("buy_service"); // never bought electricity blind
   });
 
   it("with a report already bought, the planner acts on it: minimal relief for a stuck heater", async () => {
-    await resetDemo(database, "electricity-surge");
+    await resetScenario(database, "electricity-surge");
     await storeDiagnosis({ finding: "stuck_load", summary: "Stuck heater.", ownerAction: "Fix the heater.", expectedNormalKwhPerHour: 0.32, observedKwhPerHour: 1.02 });
     const d = decide(await buildDecisionInput(database, DEMO_HOUSEHOLD_ID));
     expect(d.outcome).toBe("purchase_started");
@@ -209,23 +209,23 @@ describe("tool guard (code, whatever the model asks)", () => {
   }
 
   it("refuses to buy electricity blind while the surge is unexplained", async () => {
-    await resetDemo(database, "electricity-surge");
+    await resetScenario(database, "electricity-surge");
     const c = await ctx();
     const q = (await callTool(c, "request_quote", { utility: "electricity", provider_id: "prv_demo_powergrid", product_code: "elec_5000" })) as { quote_id: string };
-    const r = (await callTool(c, "purchase_utility", { quote_id: q.quote_id, reason: "Low meter." })) as { status: string; reason: string };
+    const r = (await callTool(c, "buy_service", { quote_id: q.quote_id, reason: "Low meter." })) as { status: string; reason: string };
     expect(r.status).toBe("refused");
     expect(r.reason).toMatch(/cause is unknown/);
   });
 
   it("after a stuck-heater diagnosis, allows only minimal relief", async () => {
-    await resetDemo(database, "electricity-surge");
+    await resetScenario(database, "electricity-surge");
     await storeDiagnosis({ finding: "stuck_load", summary: "Stuck heater.", ownerAction: "Fix the heater.", expectedNormalKwhPerHour: 0.32, observedKwhPerHour: 1.02 });
     const c = await ctx();
     const big = (await callTool(c, "request_quote", { utility: "electricity", provider_id: "prv_demo_powergrid", product_code: "elec_5000" })) as { quote_id: string };
-    const r = (await callTool(c, "purchase_utility", { quote_id: big.quote_id, reason: "Fill up." })) as { status: string; reason: string };
+    const r = (await callTool(c, "buy_service", { quote_id: big.quote_id, reason: "Fill up." })) as { status: string; reason: string };
     expect(r).toMatchObject({ status: "refused", reason: expect.stringMatching(/minimal relief/) });
     const plan = decide(await buildDecisionInput(database, DEMO_HOUSEHOLD_ID)).selected.find((p) => p.kind === "electricity")!;
     const small = (await callTool(c, "request_quote", { utility: "electricity", provider_id: plan.product.providerId, product_code: plan.product.code })) as { quote_id: string };
-    expect(await callTool(c, "propose_purchase", { quote_id: small.quote_id, reason: "Minimal relief." })).toMatchObject({ needed: true });
+    expect(await callTool(c, "evaluate_purchase", { quote_id: small.quote_id, reason: "Minimal relief." })).toMatchObject({ needed: true });
   });
 });

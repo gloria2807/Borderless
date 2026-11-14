@@ -29,6 +29,8 @@ export const settingsSchema = z
     approvalTtlSeconds: z.number().int().min(10).max(86_400).optional(),
     /** Per-utility cap per purchase; 0 or absent = no cap beyond the per-purchase limit. */
     maxPerUtilityNgn: z.record(z.enum(UTILITY_KINDS), z.number().int().min(0).max(1_000_000)).optional(),
+    /** Explicit provider allowlist. Only registered providers count; omitted = every provider of an approved service. */
+    approvedProviderIds: z.array(z.string().regex(/^prv_[a-z0-9_]{2,40}$/)).max(50).optional(),
   })
   .refine((v) => new Set(v.priorities).size === 3, { message: "Each utility must appear once in priorities", path: ["priorities"] });
 
@@ -79,8 +81,10 @@ export async function updateSettings(db: Database, householdId: string, input: S
         ...(input.maxPerUtilityNgn !== undefined
           ? { maxPerUtilityNgn: Object.fromEntries(Object.entries(input.maxPerUtilityNgn).filter(([, n]) => n > 0)) }
           : {}),
-        // Providers follow the approved services (every demo provider of an approved service).
-        approvedProviderIds: ALL_PROVIDERS.filter((m) => input.approvedServices.includes(m.definition.kind)).map((m) => m.definition.id),
+        // Only registered providers of approved services can be on the allowlist.
+        approvedProviderIds: ALL_PROVIDERS.filter(
+          (m) => input.approvedServices.includes(m.definition.kind) && (input.approvedProviderIds === undefined || input.approvedProviderIds.includes(m.definition.id)),
+        ).map((m) => m.definition.id),
         updatedAt: new Date(),
       })
       .where(eq(s.agentPolicies.householdId, householdId));
@@ -95,6 +99,7 @@ export async function updateSettings(db: Database, householdId: string, input: S
     if (before && input.taskBudgetNgn !== undefined && before.taskBudgetNgn !== input.taskBudgetNgn) changes.push(`per-run limit ₦${input.taskBudgetNgn.toLocaleString("en-NG")}`);
     if (before && input.reserveNgn !== undefined && before.reserveNgn !== input.reserveNgn) changes.push(`reserve ₦${input.reserveNgn.toLocaleString("en-NG")}`);
     if (before && before.priorities.join() !== input.priorities.join()) changes.push(`priorities ${input.priorities.join(" > ")}`);
+    if (before && input.approvedProviderIds !== undefined && [...before.approvedProviderIds].sort().join() !== [...input.approvedProviderIds].sort().join()) changes.push(`approved providers: ${input.approvedProviderIds.length}`);
     await recordEvent(tx, {
       householdId,
       category: "system",

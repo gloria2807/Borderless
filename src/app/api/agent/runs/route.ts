@@ -1,6 +1,6 @@
 import { desc, eq } from "drizzle-orm";
 import { z } from "zod";
-import { AgentRunConflictError, AiUnavailableError, startAgentRun } from "@/server/agent/runtime/executor";
+import { AgentPausedError, AgentRunConflictError, AiUnavailableError, startAgentRun } from "@/server/agent/runtime/executor";
 import { action, DEMO_HOUSEHOLD, fail, ok, parseBody } from "@/server/api";
 import { db } from "@/server/db/client";
 import { agentRuns } from "@/server/db/schema";
@@ -23,6 +23,7 @@ export const POST = action(async (request) => {
   } catch (err) {
     if (err instanceof AgentRunConflictError) return fail(409, err.code, err.message, { runId: err.runId });
     if (err instanceof AiUnavailableError) return fail(503, err.code, err.message);
+    if (err instanceof AgentPausedError) return fail(409, err.code, err.message);
     throw err;
   }
 });

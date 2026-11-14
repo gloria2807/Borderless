@@ -6,7 +6,8 @@ import { db } from "@/server/db/client";
 import { DEMO_HOUSEHOLD } from "@/server/api";
 import { loadHousehold } from "@/server/household/state";
 import { registryListing, serviceDocument, verifyServiceDocument } from "@/server/providers/catalog";
-import { requireProvider } from "@/server/providers/registry";
+import { eligibilityFor, requireProvider } from "@/server/providers/registry";
+import { accountEligibilityInputs } from "@/server/views/authority";
 
 export const metadata: Metadata = { title: "Provider network" };
 export const dynamic = "force-dynamic";
@@ -15,10 +16,19 @@ export default async function ProvidersPage() {
   const database = db();
   const policy = (await loadHousehold(database, DEMO_HOUSEHOLD)).policy;
   const listing = registryListing();
+  const accounts = await accountEligibilityInputs(database, DEMO_HOUSEHOLD);
   const entries = await Promise.all(
     listing.map(async (entry) => {
       const doc = await serviceDocument(database, requireProvider(entry.providerId));
-      return { entry, doc, check: verifyServiceDocument(entry.providerId, doc), approved: policy.approvedProviderIds.includes(entry.providerId) };
+      const module = requireProvider(entry.providerId);
+      const account = accounts[module.definition.kind];
+      const eligibility =
+        module.definition.category === "intelligence"
+          ? { eligible: true, reason: "Reports on this household's meter." }
+          : account
+            ? eligibilityFor(module, account)
+            : { eligible: false, reason: "The household has no account for this utility." };
+      return { entry, doc, check: verifyServiceDocument(entry.providerId, doc), approved: policy.approvedProviderIds.includes(entry.providerId), eligibility };
     }),
   );
 
@@ -82,13 +92,19 @@ export default async function ProvidersPage() {
         </span>
       </div>
 
+      <p className="mb-6 max-w-4xl text-[12.5px] text-fg-2">
+        <span className="font-medium text-fg">Eligibility is a real constraint, not a price comparison.</span> This household&apos;s meter is served by{" "}
+        <span className="font-medium text-fg">{accounts.electricity?.distributionCompany ?? "an unknown DisCo"}</span>, so only vendors authorised for it can recharge it; airtime and data are bought on the
+        line&apos;s own network ({(accounts.airtime?.network ?? "unknown").toUpperCase()}). Both electricity vendors below sell at that DisCo&apos;s (simulated) tariff and differ only in service fee and amounts.
+      </p>
+
       {(["utility", "intelligence"] as const).map((cat) => (
       <section key={cat} className="mb-8" aria-label={cat === "utility" ? "Utility providers" : "Information services"}>
       <SectionLabel as="h2" aside={<span className="mono text-[10.5px] text-fg-3">{entries.filter((x) => x.doc.category === cat).length} providers</span>}>
         {cat === "utility" ? "Utility credit" : "Information services"}
       </SectionLabel>
       <div className="grid gap-4 lg:grid-cols-2">
-        {entries.filter((x) => x.doc.category === cat).map(({ entry, doc, check, approved }) => {
+        {entries.filter((x) => x.doc.category === cat).map(({ entry, doc, check, approved, eligibility }) => {
           const paid = doc.endpoints.find((e) => e.paid);
           const prices = doc.products.map((p) => p.priceNgn);
           return (
@@ -109,7 +125,11 @@ export default async function ProvidersPage() {
                   <StatusPill tone={approved ? "info" : "warning"} pulse={false}>
                     {approved ? "Approved by you" : "Not approved"}
                   </StatusPill>
+                  <StatusPill tone={eligibility.eligible ? "positive" : "neutral"} pulse={false}>
+                    {eligibility.eligible ? "Eligible for this household" : "Not eligible"}
+                  </StatusPill>
                 </div>
+                <p className="text-[12px] text-fg-2">{eligibility.reason}</p>
                 {!check.verified && <p className="text-2xs text-coral">{check.problems.join(" ")}</p>}
 
                 <div>

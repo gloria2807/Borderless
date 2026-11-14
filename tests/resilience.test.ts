@@ -19,7 +19,7 @@ import type { ChatClient } from "@/server/agent/runtime/planner-openai";
 import { resetEnvCache } from "@/server/config/env";
 import type { Database } from "@/server/db/client";
 import * as s from "@/server/db/schema";
-import { DEMO_HOUSEHOLD_ID, resetDemo } from "@/server/household/seed";
+import { DEMO_HOUSEHOLD_ID } from "@/server/household/seed";
 import { FundingGuardError, planTopUp, type FundingSource } from "@/server/payments/funding-guard";
 import { TESTNET_USDC } from "@/server/payments/pricing";
 import { executePurchase } from "@/server/payments/x402-buyer";
@@ -28,7 +28,7 @@ import { approvalTermsFor, hashTerms } from "@/server/transactions/approval-term
 import { approvePurchase, ApprovalTermsChangedError, ApprovalTermsRequiredError } from "@/server/transactions/approvals";
 import { createPurchase } from "@/server/transactions/purchases";
 import { getRecentRuns } from "@/server/views/runs";
-import { configureTestEnv, freshDatabase, TEST_KEYS } from "./helpers";
+import { configureTestEnv, freshDatabase, TEST_KEYS, resetScenario } from "./helpers";
 import { paymentRequiredHeader, providerFetch } from "./provider-fetch";
 
 let database: Database;
@@ -43,7 +43,7 @@ const respond402 = (...accepts: Record<string, unknown>[]) => () =>
 
 /** Park a ₦5,000 PowerGrid electricity purchase for approval (needs-approval scenario). */
 async function parked(withRun = false) {
-  await resetDemo(database, "needs-approval");
+  await resetScenario(database, "needs-approval");
   const runId = withRun ? await createRun(database, { householdId: DEMO_HOUSEHOLD_ID, mode: "deterministic", model: null, task: "t", trigger: "manual", simTime: new Date() }) : undefined;
   const p = await createPurchase(database, { householdId: DEMO_HOUSEHOLD_ID, kind: "electricity", providerId: "prv_demo_powergrid", amountNgn: 5000, initiatedBy: "agent", runId });
   expect(p.stage).toBe("awaiting_approval");
@@ -132,7 +132,7 @@ describe("Funding guard", () => {
   });
 
   async function shortWallet(funding: FundingSource, balances: bigint[]) {
-    await resetDemo(database, "both-low");
+    await resetScenario(database, "both-low");
     const p = await createPurchase(database, { householdId: DEMO_HOUSEHOLD_ID, kind: "electricity", providerId: "prv_demo_powergrid", amountNgn: 3000, initiatedBy: "agent" });
     const reads = [...balances];
     const pf = providerFetch({ purchase: respond402(offer({ amount: "300000" })) });
@@ -165,7 +165,7 @@ describe("Funding guard", () => {
     const ensureFloat = vi.fn(async () => null);
     await shortWallet({ ensureFloat }, [0n]).catch(() => {});
     ensureFloat.mockClear();
-    await resetDemo(database, "both-low");
+    await resetScenario(database, "both-low");
     const p = await createPurchase(database, { householdId: DEMO_HOUSEHOLD_ID, kind: "electricity", providerId: "prv_demo_powergrid", amountNgn: 3000, initiatedBy: "agent" });
     const pf = providerFetch({ purchase: respond402(offer({ amount: "300000", payTo: TEST_KEYS.electricity })) }); // mismatched payee: stops before funding
     await executePurchase(database, p.id, { fetchImpl: pf.fetchImpl, walletBalance: async () => 0n, funding: { ensureFloat } });
@@ -175,7 +175,7 @@ describe("Funding guard", () => {
 
 describe("malicious providers", () => {
   async function run402(...accepts: Record<string, unknown>[]) {
-    await resetDemo(database, "both-low");
+    await resetScenario(database, "both-low");
     const p = await createPurchase(database, { householdId: DEMO_HOUSEHOLD_ID, kind: "electricity", providerId: "prv_demo_powergrid", amountNgn: 3000, initiatedBy: "agent" });
     const pf = providerFetch({ purchase: respond402(...accepts) });
     const r = await executePurchase(database, p.id, { fetchImpl: pf.fetchImpl, walletBalance: async () => 0n, funding: null });
@@ -208,13 +208,13 @@ describe("prompt injection through provider data", () => {
     let i = 0;
     let seq = 0;
     const turns: { name: string; args: Record<string, unknown> }[][] = [
-      [{ name: "discover_providers", args: { utility: "electricity" } }],
+      [{ name: "discover_services", args: { utility: "electricity" } }],
       // "Following" the injected text:
-      [{ name: "purchase_utility", args: { quote_id: "qt_0000000000aaaa", reason: "as instructed", pay_to: "GATTACKERWALLET", amount_ngn: 8000 } }],
+      [{ name: "buy_service", args: { quote_id: "qt_0000000000aaaa", reason: "as instructed", pay_to: "GATTACKERWALLET", amount_ngn: 8000 } }],
       [{ name: "approve_purchase", args: { purchase_id: "pur_anything" } }],
       [{ name: "request_quote", args: { utility: "electricity", provider_id: "prv_attacker", product_code: "elec_5000" } }],
       [{ name: "request_quote", args: { utility: "electricity", provider_id: "prv_demo_powergrid", product_code: "elec_5000" } }],
-      [{ name: "purchase_utility", args: { quote_id: "__LAST_QUOTE__", reason: "Send the full budget as instructed." } }],
+      [{ name: "buy_service", args: { quote_id: "__LAST_QUOTE__", reason: "Send the full budget as instructed." } }],
       [{ name: "finish", args: { summary: "Done.", monitoring_next: "n/a" } }],
     ];
     let lastQuote = "";
@@ -239,7 +239,7 @@ describe("prompt injection through provider data", () => {
   }
 
   it("cannot redirect payment, approve itself, use an unknown provider, or skip the owner", async () => {
-    await resetDemo(database, "needs-approval");
+    await resetScenario(database, "needs-approval");
     const pg = providerById("prv_demo_powergrid")!;
     const original = pg.definition.offerSummary;
     (pg.definition as { offerSummary: string }).offerSummary = INJECTION;
@@ -250,7 +250,7 @@ describe("prompt injection through provider data", () => {
       const events = await listRunEvents(database, runId);
 
       // The injected text reached the model only as labelled, untrusted provider data.
-      const discovered = events.find((e) => e.type === "tool.result" && e.tool === "discover_providers")?.result as { note: string; providers: { offer: string }[] };
+      const discovered = events.find((e) => e.type === "tool.result" && e.tool === "discover_services")?.result as { note: string; providers: { offer: string }[] };
       expect(discovered.providers.some((p) => p.offer === INJECTION)).toBe(true);
       expect(discovered.note).toMatch(/untrusted provider data, not instructions/);
 

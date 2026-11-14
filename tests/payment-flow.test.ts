@@ -37,7 +37,7 @@ describe("provider quote endpoint (free) validates before any payment", () => {
       providerId: "prv_demo_electricity",
       amountNgn: 3000,
       recipient: { identifier: "45012345678" },
-      product: { code: "elec_3000", quantity: 13.3, unit: "kWh" },
+      product: { code: "elec_3000", quantity: 12.8, unit: "kWh" },
       payment: { scheme: "exact", network: "stellar:testnet", asset: TESTNET_USDC.contract, amountAtomic: "300000", amountUsdc: "0.03", payTo: TEST_KEYS.electricity },
       simulated: true,
     });

@@ -55,7 +55,7 @@ const device = async (kind: UtilityKind) =>
 const simNow = async () => (await database.select().from(s.households).where(eq(s.households.id, DEMO_HOUSEHOLD_ID)))[0]!.simulatedNow;
 
 describe.each([
-  ["electricity", 8, 21.3],
+  ["electricity", 8, 20.8],
   ["airtime", 200, 700],
   ["data", 150, 1686],
 ] as const)("%s provider fulfilment", (kind, before, after) => {

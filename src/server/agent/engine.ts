@@ -315,6 +315,7 @@ export function choose(candidates: Candidate[], urgency: UrgencyLevel): PlannedP
 
 const VIOLATION_TO_DEFERRAL: Partial<Record<ViolationCode, DeferralReason>> = {
   agent_disabled: "agent_disabled",
+  agent_paused: "agent_disabled",
   service_not_approved: "service_not_approved",
   provider_not_approved: "service_not_approved",
   network_not_approved: "network_not_approved",

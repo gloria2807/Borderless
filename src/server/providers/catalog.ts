@@ -54,7 +54,7 @@ export interface ServiceDocument {
   category: ProviderCategory;
   /** Provider-written description. Untrusted text. */
   description: string;
-  serves: { utility: UtilityKind; country: string; networks: string[] };
+  serves: { utility: UtilityKind; country: string; networks: string[]; /** Electricity: DisCos this vendor is authorised for. */ distributionCompanies: string[] };
   products: { code: string; label: string; priceNgn: number; quantity: number; unit: string; validityHours: number | null }[];
   denominations: { minNgn: number; maxNgn: number };
   availability: { available: boolean; checkedAt: string };
@@ -102,7 +102,7 @@ export async function serviceDocument(db: Database, m: ProviderModule): Promise<
     name: d.name,
     category: d.category,
     description: await providerDescription(m),
-    serves: { utility: d.kind, country: d.countryCode, networks: [...d.networks] },
+    serves: { utility: d.kind, country: d.countryCode, networks: [...d.networks], distributionCompanies: [...(d.distributionCompanies ?? [])] },
     products: m.listProducts().map((p) => ({ code: p.code, label: p.label, priceNgn: p.amountNgn, quantity: p.quantity, unit: p.unit, validityHours: p.validityHours ?? null })),
     denominations: { minNgn: d.minAmountNgn, maxNgn: d.maxAmountNgn },
     availability: { available: row?.available ?? false, checkedAt: new Date().toISOString() },

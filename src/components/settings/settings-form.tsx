@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useId, useMemo, useState, type ReactNode } from "react";
 import { ArrowDown, ArrowUp, ShieldOff } from "lucide-react";
 import { Button, cn } from "@/components/ui/primitives";
 import { Toggle, useApiAction } from "@/components/ui/interactive";
@@ -27,6 +27,16 @@ export interface SettingsValues {
   approvalTtlSeconds: number;
   /** 0 = no separate cap for that utility. */
   maxPerUtilityNgn: Record<Kind, number>;
+  approvedProviderIds: string[];
+}
+
+export interface ProviderOption {
+  id: string;
+  name: string;
+  kind: Kind;
+  category: "utility" | "intelligence";
+  eligible: boolean;
+  eligibility: string;
 }
 
 function Section({ title, description, children }: { title: string; description: string; children: ReactNode }) {
@@ -41,32 +51,39 @@ function Section({ title, description, children }: { title: string; description:
   );
 }
 
-function MoneyField({ label, help, value, onChange }: { label: string; help?: string; value: number; onChange: (n: number) => void }) {
+/** Edits an amount in test USDC; stores it as naira of household value at the fixed demo rate. */
+function MoneyField({ label, help, value, onChange, rate }: { label: string; help?: string; value: number; onChange: (n: number) => void; rate: number }) {
   const id = useId();
+  const [text, setText] = useState(() => (value / rate).toFixed(2));
+  // Re-sync when the value changes from outside (Discard changes, a fresh load), not while typing.
+  useEffect(() => {
+    setText((t) => (Math.round(Number(t) * rate) === value ? t : (value / rate).toFixed(2)));
+  }, [value, rate]);
   return (
     <div>
       <label htmlFor={id} className="text-[13px] font-medium text-fg-2">
         {label}
       </label>
-      <div className="mt-1.5 flex h-9 max-w-[220px] items-center rounded-lg border border-line bg-raised transition-shadow focus-within:border-green focus-within:shadow-[0_0_0_3px_color-mix(in_srgb,var(--color-green)_15%,transparent)]">
-        <span className="pl-3 text-fg-3">₦</span>
+      <div className="mt-1.5 flex h-9 max-w-[240px] items-center rounded-lg border border-line bg-raised transition-shadow focus-within:border-green focus-within:shadow-[0_0_0_3px_color-mix(in_srgb,var(--color-green)_15%,transparent)]">
         <input
           id={id}
-          inputMode="numeric"
-          className="mono h-full w-full bg-transparent px-2 text-[13px] text-fg outline-none"
-          value={Number.isFinite(value) ? value.toLocaleString("en-NG") : ""}
+          inputMode="decimal"
+          className="mono h-full w-full bg-transparent pl-3 text-[13px] text-fg outline-none"
+          value={text}
           onChange={(e) => {
-            const n = Number(e.target.value.replace(/[^\d]/g, ""));
-            onChange(Number.isFinite(n) ? n : 0);
+            const t = e.target.value.replace(/[^\d.]/g, "").replace(/(\..*)\./g, "$1");
+            setText(t);
+            const n = Number(t);
+            onChange(Number.isFinite(n) ? Math.round(n * rate) : 0);
           }}
-          aria-describedby={help ? `${id}-help` : undefined}
+          onBlur={() => setText((value / rate).toFixed(2))}
+          aria-describedby={`${id}-help`}
         />
+        <span className="pr-3 pl-1 text-[12px] font-medium text-fg-3">USDC</span>
       </div>
-      {help && (
-        <p id={`${id}-help`} className="mt-1 text-2xs text-fg-3">
-          {help}
-        </p>
-      )}
+      <p id={`${id}-help`} className="mt-1 text-2xs text-fg-3">
+        <span className="mono">{naira(value)}</span> of household value{help ? ` · ${help}` : ""}
+      </p>
     </div>
   );
 }
@@ -99,7 +116,7 @@ function ApprovalWindow({ value, onChange }: { value: number; onChange: (n: numb
   );
 }
 
-export function SettingsForm({ initial, spentNgn }: { initial: SettingsValues; spentNgn: number }) {
+export function SettingsForm({ initial, spentNgn, rate, providers }: { initial: SettingsValues; spentNgn: number; rate: number; providers: ProviderOption[] }) {
   const [v, setV] = useState<SettingsValues>(initial);
   const { run, pending } = useApiAction();
   const set = <K extends keyof SettingsValues>(k: K, value: SettingsValues[K]) => setV((x) => ({ ...x, [k]: value }));
@@ -107,11 +124,12 @@ export function SettingsForm({ initial, spentNgn }: { initial: SettingsValues; s
   const nameId = useId();
 
   const warnings: string[] = [];
-  if (v.manualApprovalThresholdNgn > v.perPurchaseLimitNgn) warnings.push("The approval threshold is above the per-purchase limit, so Borderless will never ask for approval.");
+  if (v.manualApprovalThresholdNgn > v.perPurchaseLimitNgn) warnings.push("The automatic limit is above the largest single request, so Borderless will never ask for approval.");
+  if (v.perPurchaseLimitNgn > v.taskBudgetNgn && v.taskBudgetNgn > 0) warnings.push("The largest single request is above the per-task budget, so the task budget is what binds.");
   if (v.overallAgentLimitNgn > v.budgetAmountNgn) warnings.push("The agent limit is above the budget. The budget still caps spending.");
   if (v.reserveNgn >= v.budgetAmountNgn && v.budgetAmountNgn > 0) warnings.push("The reserve is as large as the budget, so Borderless can't buy anything.");
-  if (v.dailyAgentBudgetNgn === 0 || v.taskBudgetNgn === 0) warnings.push("A ₦0 daily or per-run limit stops Borderless from buying anything.");
-  else if (v.dailyAgentBudgetNgn < v.perPurchaseLimitNgn) warnings.push("The daily limit is below the per-purchase limit, so the daily limit is what binds.");
+  if (v.dailyAgentBudgetNgn === 0 || v.taskBudgetNgn === 0) warnings.push("A 0 USDC daily or per-task limit stops Borderless from buying anything.");
+  else if (v.dailyAgentBudgetNgn < v.perPurchaseLimitNgn) warnings.push("The daily limit is below the largest single request, so the daily limit is what binds.");
   if (v.budgetAmountNgn < spentNgn) warnings.push(`The new budget is below what's already spent this period (${naira(spentNgn)}). Borderless won't buy anything until the next period.`);
 
   const move = (i: number, d: -1 | 1) => {
@@ -146,31 +164,19 @@ export function SettingsForm({ initial, spentNgn }: { initial: SettingsValues; s
         <Toggle checked={v.autoPurchaseEnabled} onChange={(x) => set("autoPurchaseEnabled", x)} label="Automatic purchasing" />
       </div>
 
-      <Section title="Spending limits" description="Checked on the server before every payment is signed. Borderless cannot exceed them.">
-        <MoneyField label="Per purchase, up to" value={v.perPurchaseLimitNgn} onChange={(n) => set("perPurchaseLimitNgn", n)} help="No single purchase can be larger than this." />
-        <MoneyField label="Ask me before purchases above" value={v.manualApprovalThresholdNgn} onChange={(n) => set("manualApprovalThresholdNgn", n)} help="Larger purchases wait for your approval." />
+      <Section title="Spending authority" description="The owner's delegated limits, in test USDC. Checked in code before every payment is signed; the AI cannot change or exceed them.">
+        <MoneyField rate={rate} label="Automatic purchases, up to (per request)" value={v.manualApprovalThresholdNgn} onChange={(n) => set("manualApprovalThresholdNgn", n)} help="Anything above waits for your approval." />
+        <MoneyField rate={rate} label="Largest single request, even with approval" value={v.perPurchaseLimitNgn} onChange={(n) => set("perPurchaseLimitNgn", n)} help="Refused outright above this." />
+        <MoneyField rate={rate} label="Each agent task, up to" value={v.taskBudgetNgn} onChange={(n) => set("taskBudgetNgn", n)} help="One run can't spend more, however many utilities need help." />
+        <MoneyField rate={rate} label="Each day, up to" value={v.dailyAgentBudgetNgn} onChange={(n) => set("dailyAgentBudgetNgn", n)} help="Resets at midnight, household time." />
+        <MoneyField rate={rate} label="This period, up to" value={v.overallAgentLimitNgn} onChange={(n) => set("overallAgentLimitNgn", n)} help="Your own purchases don't count towards this." />
+        <MoneyField rate={rate} label="Each information purchase, up to" value={v.intelligenceCapNgn} onChange={(n) => set("intelligenceCapNgn", n)} help="For example a paid meter diagnostic." />
         <ApprovalWindow value={v.approvalTtlSeconds} onChange={(n) => set("approvalTtlSeconds", n)} />
-        <MoneyField label="Total Borderless can spend this period" value={v.overallAgentLimitNgn} onChange={(n) => set("overallAgentLimitNgn", n)} help="Your own purchases don't count towards this." />
-      </Section>
-
-      <Section title="Budget allocation" description="How Borderless shares money between days, runs and utilities. Also enforced on the server before signing.">
-        <MoneyField label="Borderless can spend per day, up to" value={v.dailyAgentBudgetNgn} onChange={(n) => set("dailyAgentBudgetNgn", n)} help="Resets at midnight, household time." />
-        <MoneyField label="Each agent run can spend, up to" value={v.taskBudgetNgn} onChange={(n) => set("taskBudgetNgn", n)} help="A single assessment can't spend more than this, however many utilities need help." />
-        <MoneyField label="Each information purchase, up to" value={v.intelligenceCapNgn} onChange={(n) => set("intelligenceCapNgn", n)} help="For example a paid meter diagnostic. ₦0 stops Borderless from buying information." />
-        <MoneyField label="Always keep in reserve" value={v.reserveNgn} onChange={(n) => set("reserveNgn", n)} help="Borderless won't spend the last part of the budget. Your own purchases can." />
-        <fieldset>
-          <legend className="text-[13px] font-medium text-fg-2">Per-purchase cap by utility</legend>
-          <p className="mt-0.5 text-2xs text-fg-3">₦0 means no separate cap (the per-purchase limit applies).</p>
-          <div className="mt-2 grid gap-3 sm:grid-cols-3">
-            {(["electricity", "airtime", "data"] as const).map((k) => (
-              <MoneyField key={k} label={UTILITY_NAMES[k]} value={v.maxPerUtilityNgn[k]} onChange={(n) => set("maxPerUtilityNgn", { ...v.maxPerUtilityNgn, [k]: n })} />
-            ))}
-          </div>
-        </fieldset>
+        <p className="text-[12px] text-fg-3">Whatever these allow, Borderless can never spend more than its testnet wallet holds.</p>
       </Section>
 
       <Section title="Household budget" description="All household purchases come out of this budget, including your own.">
-        <MoneyField label="Budget" value={v.budgetAmountNgn} onChange={(n) => set("budgetAmountNgn", n)} />
+        <MoneyField rate={rate} label="Budget" value={v.budgetAmountNgn} onChange={(n) => set("budgetAmountNgn", n)} />
         <fieldset>
           <legend className="text-[13px] font-medium text-fg-2">Period</legend>
           <div className="mt-1.5 inline-flex rounded-full bg-fg/[0.06] p-0.5">
@@ -179,6 +185,16 @@ export function SettingsForm({ initial, spentNgn }: { initial: SettingsValues; s
                 <input type="radio" name="period" value={p} checked={v.budgetPeriod === p} onChange={() => set("budgetPeriod", p)} className="sr-only" />
                 {p === "weekly" ? "Weekly" : "Monthly"}
               </label>
+            ))}
+          </div>
+        </fieldset>
+        <MoneyField rate={rate} label="Always keep in reserve" value={v.reserveNgn} onChange={(n) => set("reserveNgn", n)} help="Borderless won't spend the last part of the budget." />
+        <fieldset>
+          <legend className="text-[13px] font-medium text-fg-2">Cap per request, by utility</legend>
+          <p className="mt-0.5 text-2xs text-fg-3">0 means no separate cap.</p>
+          <div className="mt-2 grid gap-3 sm:grid-cols-3">
+            {(["electricity", "airtime", "data"] as const).map((k) => (
+              <MoneyField rate={rate} key={k} label={UTILITY_NAMES[k]} value={v.maxPerUtilityNgn[k]} onChange={(n) => set("maxPerUtilityNgn", { ...v.maxPerUtilityNgn, [k]: n })} />
             ))}
           </div>
         </fieldset>
@@ -201,7 +217,7 @@ export function SettingsForm({ initial, spentNgn }: { initial: SettingsValues; s
         </ol>
       </Section>
 
-      <Section title="Approved services and networks" description="Borderless only buys what you approve here.">
+      <Section title="Approved services, networks and providers" description="Borderless only buys what you approve here, and only from providers that can actually serve your accounts.">
         <fieldset>
           <legend className="text-[13px] font-medium text-fg-2">Services</legend>
           <div className="mt-2 flex flex-wrap gap-2">
@@ -223,6 +239,26 @@ export function SettingsForm({ initial, spentNgn }: { initial: SettingsValues; s
               </label>
             ))}
           </div>
+        </fieldset>
+        <fieldset>
+          <legend className="text-[13px] font-medium text-fg-2">Provider allowlist</legend>
+          <p className="mt-0.5 text-2xs text-fg-3">Registered demo providers only. Unticked providers can still be discovered, but never paid.</p>
+          <ul className="mt-2 divide-y divide-line-soft overflow-hidden rounded-lg bg-raised shadow-ring">
+            {providers.map((p) => (
+              <li key={p.id}>
+                <label className="flex cursor-pointer items-start gap-3 px-3 py-2.5 has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-green">
+                  <input type="checkbox" className="mt-0.5 accent-green" checked={v.approvedProviderIds.includes(p.id)} onChange={() => set("approvedProviderIds", toggleIn(v.approvedProviderIds, p.id))} />
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-[13px] font-medium text-fg">{p.name}</span>
+                    <span className="block text-2xs text-fg-3">
+                      {UTILITY_NAMES[p.kind]} · {p.category === "utility" ? "utility credit" : "information service"} · {p.eligibility}
+                    </span>
+                  </span>
+                  {!p.eligible && <span className="rounded-full bg-fg/[0.06] px-2 py-px text-2xs font-medium text-fg-3">Not eligible</span>}
+                </label>
+              </li>
+            ))}
+          </ul>
         </fieldset>
       </Section>
 

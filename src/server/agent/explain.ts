@@ -9,6 +9,7 @@
  *  - Unusual usage is reported as a change in this household's usage — never as a
  *    provider error or wrongful deduction, which we have no evidence for.
  */
+import { env } from "../config/env";
 import type { UtilityKind } from "../db/schema";
 import { providerById } from "../providers/registry";
 import { RECENT_WINDOW_HOURS } from "../usage/forecast";
@@ -33,6 +34,8 @@ export interface Explanation {
 const NAME: Record<UtilityKind, string> = { electricity: "Electricity", airtime: "Airtime", data: "Mobile data" };
 const noun = (k: UtilityKind) => NAME[k].toLowerCase();
 export const naira = (n: number) => `₦${Math.round(n).toLocaleString("en-NG")}`;
+/** Naira with its test-USDC equivalent at the fixed demo rate: the household budgets in USDC. */
+export const money = (n: number) => `${naira(n)} (${(n / env().DEMO_NGN_PER_TESTNET_USDC).toFixed(2)} USDC)`;
 
 export function formatQuantity(value: number, unit: string): string {
   if (unit === "NGN") return naira(value);
@@ -90,8 +93,8 @@ function describeForecast(f: Forecast): ExplanationLine[] {
 
 /** "₦4,000 of electricity" / "3 GB · 30 days data bundle (₦2,000)" — amount stated once. */
 function productPhrase(product: { label: string; amountNgn: number; kind: UtilityKind }): string {
-  if (product.kind === "data") return `the ${product.label} data bundle (${naira(product.amountNgn)})`;
-  return `${naira(product.amountNgn)} of ${noun(product.kind)}`;
+  if (product.kind === "data") return `the ${product.label} data bundle (${money(product.amountNgn)})`;
+  return `${money(product.amountNgn)} of ${noun(product.kind)}`;
 }
 
 function describePurchase(p: PlannedPurchase, decision: Decision): string {
@@ -134,7 +137,7 @@ function describeDeferral(d: Deferral, decision: Decision): ExplanationLine {
     insufficient_budget: d.outrankedBy
       ? `I've deferred ${n}: after ${noun(d.outrankedBy)}, only ${remaining} of the budget remains, which isn't enough for a useful ${n} purchase.${rec} Increase the budget or change priorities if you'd like both.`
       : `The remaining budget (${remaining}) isn't enough for a useful ${n} purchase.${rec} Increase the budget or change priorities so I can act.`,
-    insufficient_authority: `Buying ${n} would exceed the spending authority you've given me (${naira(decision.budgetImpact.agentAuthorityAfterNgn)} left).${rec}`,
+    insufficient_authority: `Buying ${n} would exceed the spending authority you've given me (${money(decision.budgetImpact.agentAuthorityAfterNgn)} left).${rec}`,
     over_purchase_limit: `Every useful ${n} purchase is above your per-purchase limit.${rec}`,
     no_eligible_product: `No available ${n} product fits this need.`,
   };
@@ -150,7 +153,7 @@ export function explain(decision: Decision): Explanation {
     lines.push({
       kind: "fact",
       utility: null,
-      text: `Budget: ${naira(decision.budgetImpact.remainingBeforeNgn)} remaining; my spending authority has ${naira(decision.budgetImpact.agentAuthorityBeforeNgn)} left.`,
+      text: `Budget: ${money(decision.budgetImpact.remainingBeforeNgn)} remaining; my spending authority has ${money(decision.budgetImpact.agentAuthorityBeforeNgn)} left.`,
     });
   }
   for (const p of decision.selected) {
@@ -166,7 +169,7 @@ export function explain(decision: Decision): Explanation {
     if (line) lines.push(line);
   }
   if (decision.selected.length > 0) {
-    lines.push({ kind: "decision", utility: null, text: `After this, ${naira(decision.budgetImpact.remainingAfterNgn)} of the budget will remain.` });
+    lines.push({ kind: "decision", utility: null, text: `After this, ${money(decision.budgetImpact.remainingAfterNgn)} of the budget will remain.` });
   }
 
   // The "no purchase needed" path, stated explicitly for every utility that was checked.

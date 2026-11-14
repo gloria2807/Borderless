@@ -240,6 +240,12 @@ export interface PurchaseRowView {
   simTime: string;
   createdAt: string;
   decisionId: string | null;
+  runId: string | null;
+  approvalExpiresAt?: string | null;
+  approvalTermsHash?: string | null;
+  approvalTerms?: { amountAtomic: string; payTo: string; recipient: string } | null;
+  /** Approval requests only: the agent's stated reason, from its run log. */
+  reason?: string | null;
 }
 
 export async function getPurchases(householdId: string, opts: { ids?: string[]; limit?: number } = {}): Promise<PurchaseRowView[]> {
@@ -278,6 +284,7 @@ export async function getPurchases(householdId: string, opts: { ids?: string[]; 
     simTime: p.simTime.toISOString(),
     createdAt: p.createdAt.toISOString(),
     decisionId: p.decisionId,
+    runId: p.runId,
     approvalExpiresAt: p.approvalExpiresAt?.toISOString() ?? null,
     approvalTermsHash: p.approvalTermsHash,
     approvalTerms: p.approvalTerms ? { amountAtomic: p.approvalTerms.amountAtomic, payTo: p.approvalTerms.payTo, recipient: p.approvalTerms.recipient } : null,
@@ -338,6 +345,10 @@ export async function getHouseholdOverview(householdId: string) {
   const [latestDecision] = await getDecisions(householdId, 1);
   const attention = await getPurchases(householdId, { limit: 50 });
   const faults = await database.select().from(s.demoFaults);
+  const [owner] = await database
+    .select({ name: s.householdMembers.name })
+    .from(s.householdMembers)
+    .where(and(eq(s.householdMembers.householdId, householdId), eq(s.householdMembers.role, "owner")));
   const [scenarioEvent] = await database
     .select()
     .from(s.activityEvents)
@@ -347,13 +358,13 @@ export async function getHouseholdOverview(householdId: string) {
   const scenarioId = (scenarioEvent?.data as { scenarioId?: string } | null)?.scenarioId ?? DEFAULT_SCENARIO_ID;
   return {
     scenario: { active: scenarioId, options: SCENARIOS.map((x) => ({ id: x.id, name: x.name, summary: x.summary, expect: x.expect })) },
-    household: { id: state.household.id, name: state.household.name, simNow: simNow.toISOString(), currency: state.household.currency },
+    household: { id: state.household.id, name: state.household.name, owner: owner?.name ?? null, simNow: simNow.toISOString(), currency: state.household.currency },
     budget: { ...state.budget, periodStart: state.budget.periodStart.toISOString(), periodEnd: state.budget.periodEnd.toISOString(), summary },
     policy: state.policy,
     priorities: state.priorities,
     utilities,
     latestDecision: latestDecision ?? null,
-    awaitingApproval: attention.filter((p) => p.stage === "awaiting_approval"),
+    awaitingApproval: await withReasons(database, attention.filter((p) => p.stage === "awaiting_approval")),
     needsAttention: attention.filter((p) => p.stage === "needs_attention"),
     inFlight: attention.filter((p) => ["requested", "payment_required", "submitted"].includes(p.stage)),
     providers: await providerStatus(database),
@@ -379,4 +390,20 @@ export async function providerStatus(database = db()): Promise<{ id: string; kin
     name: m.definition.name,
     available: rows.find((r) => r.id === m.definition.id)?.available ?? false,
   }));
+}
+
+/** The reason the agent gave when it proposed each parked purchase (recorded in its run log). */
+async function withReasons(database: ReturnType<typeof db>, rows: PurchaseRowView[]): Promise<PurchaseRowView[]> {
+  return Promise.all(
+    rows.map(async (p) => {
+      if (!p.runId) return { ...p, reason: null };
+      const [ev] = await database
+        .select({ reason: s.agentRunEvents.reason })
+        .from(s.agentRunEvents)
+        .where(and(eq(s.agentRunEvents.runId, p.runId), eq(s.agentRunEvents.type, "purchase.proposed"), eq(s.agentRunEvents.utility, p.kind)))
+        .orderBy(desc(s.agentRunEvents.seq))
+        .limit(1);
+      return { ...p, reason: ev?.reason ?? null };
+    }),
+  );
 }

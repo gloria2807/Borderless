@@ -20,6 +20,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     faults: o.faults,
     simNow: o.household.simNow,
     scenario: o.scenario,
+    agent: { paused: !!o.policy.agentPaused, autoPurchaseEnabled: o.policy.autoPurchaseEnabled },
   };
 
   return (
@@ -35,6 +36,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
             <div className="mb-5 rounded-lg bg-surface px-3 py-2.5 shadow-ring">
               <p className="truncate text-[12.5px] font-medium text-fg">{o.household.name}</p>
+              {o.household.owner && <p className="truncate text-[11px] text-fg-2">{o.household.owner}, owner</p>}
               <p className="mt-1 text-[11px] text-fg-3">Household time</p>
               <p className="mono text-[11.5px] text-fg-2">{dayTime(o.household.simNow)}</p>
             </div>

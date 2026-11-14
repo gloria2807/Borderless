@@ -5,6 +5,8 @@ import { FastForward, Gauge, Play, RotateCcw, Square, TriangleAlert, X } from "l
 import { Button, cn } from "@/components/ui/primitives";
 import { ConfirmButton, Toggle, useApiAction } from "@/components/ui/interactive";
 import { UTILITY_NAMES } from "@/lib/format";
+import { AgentControls } from "@/components/settings/agent-controls";
+import { OverLimitButton, SimulateLowBalanceButton } from "./demo-actions";
 
 type Kind = "electricity" | "airtime" | "data";
 
@@ -16,6 +18,7 @@ interface Props {
   faults: { key: string; label: string; enabled: boolean }[];
   simNow: string;
   scenario: { active: string; options: ScenarioOption[] };
+  agent: { paused: boolean; autoPurchaseEnabled: boolean };
   compact?: boolean;
 }
 
@@ -25,7 +28,7 @@ const SPEEDS = [0.5, 1, 2, 3, 5];
  * Operator panel for the demo: move simulated time, change usage, inject failures,
  * reset. Everything here is clearly a demo control, not a household feature.
  */
-export function DemoControls({ utilities, providers, faults, scenario, compact }: Props) {
+export function DemoControls({ utilities, providers, faults, scenario, agent, compact }: Props) {
   const ref = useRef<HTMLDialogElement>(null);
   const { run, pending } = useApiAction();
   const [live, setLive] = useState(false);
@@ -92,6 +95,18 @@ export function DemoControls({ utilities, providers, faults, scenario, compact }
           </header>
 
           <div className="flex-1 space-y-6 overflow-y-auto px-5 py-5">
+            <section>
+              <h3 className="text-[13px] font-semibold">Live demo</h3>
+              <p className="mt-0.5 text-[13px] text-fg-3">Real backend actions. Purchases are genuine Stellar testnet x402 payments.</p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <SimulateLowBalanceButton size="sm" disabled={agent.paused} />
+                <OverLimitButton />
+              </div>
+              <div className="mt-3">
+                <AgentControls paused={agent.paused} autoPurchaseEnabled={agent.autoPurchaseEnabled} compact />
+              </div>
+            </section>
+
             <section>
               <h3 className="text-[13px] font-semibold">Scenario</h3>
               <p className="mt-0.5 text-[13px] text-fg-3">A starting state. The outcome comes from Borderless&apos;s real decisions, not a script.</p>

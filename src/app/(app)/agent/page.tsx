@@ -7,6 +7,7 @@ import { RunLauncher } from "@/components/agent/run-launcher";
 import { RecentRuns } from "@/components/agent/recent-runs";
 import { EmptyState, PageHeader, Panel } from "@/components/ui/primitives";
 import { DEMO_HOUSEHOLD } from "@/server/api";
+import { env } from "@/server/config/env";
 import { getDecisions, getEvents, getHouseholdOverview } from "@/server/views/household";
 import { getRecentRuns, launcherInfo } from "@/server/views/runs";
 
@@ -34,7 +35,7 @@ export default async function AgentPage() {
       {(o.awaitingApproval.length > 0 || o.needsAttention.length > 0) && (
         <div className="mb-6 space-y-2.5">
           {o.awaitingApproval.map((p) => (
-            <ApprovalPrompt key={p.id} p={p} />
+            <ApprovalPrompt key={p.id} p={p} ngnPerUsdc={env().DEMO_NGN_PER_TESTNET_USDC} budgetLeftNgn={o.budget.summary.remainingNgn} autoLimitNgn={o.policy.manualApprovalThresholdNgn} />
           ))}
           {o.needsAttention.map((p) => (
             <AttentionPrompt key={p.id} p={p} />

@@ -56,7 +56,7 @@ describe("decision engine across providers", () => {
     }
   });
 
-  it("picks on value: the cheaper electricity (₦210/kWh) and the better data bundle", async () => {
+  it("picks on value: the electricity vendor with no service fee and the better data bundle", async () => {
     const d = decide(await buildDecisionInput(database, DEMO_HOUSEHOLD_ID));
     const by = Object.fromEntries(d.selected.map((p) => [p.kind, p.product]));
     expect(by.electricity?.providerId).toBe("prv_demo_powergrid");
@@ -110,9 +110,9 @@ describe("agent tools across providers", () => {
     await database.update(s.agentRuns).set({ id: "run_test" }).where(eq(s.agentRuns.id, id));
   });
 
-  it("discover_providers lists both providers with live availability and labels provider text untrusted", async () => {
+  it("discover_services lists both providers with live availability and labels provider text untrusted", async () => {
     await database.update(s.utilityProviders).set({ available: false }).where(eq(s.utilityProviders.id, "prv_demo_powergrid"));
-    const r = (await callTool(ctx(), "discover_providers", { utility: "electricity" })) as { providers: { provider_id: string; available: boolean; approved_by_owner: boolean }[]; note: string };
+    const r = (await callTool(ctx(), "discover_services", { utility: "electricity" })) as { providers: { provider_id: string; available: boolean; approved_by_owner: boolean }[]; note: string };
     expect(r.providers.map((p) => [p.provider_id, p.available, p.approved_by_owner])).toEqual([
       ["prv_demo_electricity", true, true],
       ["prv_demo_powergrid", false, true],
@@ -154,7 +154,7 @@ describe("agent tools across providers", () => {
     const c = ctx();
     const q = (await callTool(c, "request_quote", { utility: "electricity", provider_id: "prv_demo_powergrid", product_code: "elec_3000" })) as { quote_id: string };
     c.quotes.get(q.quote_id)!.payTo = TEST_KEYS.electricity; // a real provider wallet, but not PowerGrid's
-    const r = (await callTool(c, "purchase_utility", { quote_id: q.quote_id, reason: "Restore power." })) as { status: string; reason: string };
+    const r = (await callTool(c, "buy_service", { quote_id: q.quote_id, reason: "Restore power." })) as { status: string; reason: string };
     expect(r.status).toBe("refused");
     expect(r.reason).toMatch(/registered wallet/);
     expect(await database.select().from(s.purchases)).toHaveLength(0);

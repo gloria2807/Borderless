@@ -71,12 +71,12 @@ test("operations: an unanswered approval expires unpaid", async ({ page, request
   await loadScenario(request, "needs-approval");
   const settings = await request.put("/api/settings", {
     data: {
-      householdName: "Adeyemi Household",
-      budgetAmountNgn: 15_000,
+      householdName: "Okafor Household",
+      budgetAmountNgn: 100_000,
       budgetPeriod: "monthly",
       autoPurchaseEnabled: true,
-      perPurchaseLimitNgn: 5_000,
-      overallAgentLimitNgn: 8_000,
+      perPurchaseLimitNgn: 4_000,
+      overallAgentLimitNgn: 60_000,
       manualApprovalThresholdNgn: 1_000,
       priorities: ["electricity", "data", "airtime"],
       approvedServices: ["electricity", "airtime", "data"],

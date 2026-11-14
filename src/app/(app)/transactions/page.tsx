@@ -168,7 +168,7 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
                           {p.label}
                         </Link>
                         <p className="mono mt-0.5 text-[10.5px] text-fg-3">
-                          {UTILITY_NAMES[p.kind]} · {p.id}
+                          {p.providerName} · {UTILITY_NAMES[p.kind]} · {p.id}
                         </p>
                       </td>
                       <td className="mono px-3 py-3 whitespace-nowrap text-fg-2">{recipientOf(p)}</td>

@@ -52,7 +52,7 @@ export function jsonSafe(value: unknown): unknown {
 
 export async function createRun(
   db: Database,
-  input: { householdId: string; mode: "ai" | "deterministic"; model: string | null; task: string; trigger: "manual" | "tick" | "scenario"; simTime: Date },
+  input: { householdId: string; mode: "ai" | "deterministic"; model: string | null; task: string; trigger: "manual" | "tick" | "scenario" | "low_balance"; simTime: Date },
 ): Promise<string> {
   const id = newId("run");
   await db.insert(s.agentRuns).values({ id, ...input, status: "running", startedAt: new Date() });

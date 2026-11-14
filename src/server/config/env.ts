@@ -27,7 +27,7 @@ const baseSchema = z.object({
   X402_FACILITATOR_URL: z.string().url().default("https://x402.org/facilitator"),
   X402_FACILITATOR_API_KEY: z.string().min(1).optional(),
   /** Demo pricing: how many NGN of simulated value one testnet USDC pays for. NOT an exchange rate. */
-  DEMO_NGN_PER_TESTNET_USDC: z.coerce.number().int().positive().default(100_000),
+  DEMO_NGN_PER_TESTNET_USDC: z.coerce.number().int().positive().default(1_000),
   PROVIDER_ELECTRICITY_PAYTO: z.string().regex(STELLAR_PUBLIC_KEY).optional(),
   PROVIDER_AIRTIME_PAYTO: z.string().regex(STELLAR_PUBLIC_KEY).optional(),
   PROVIDER_DATA_PAYTO: z.string().regex(STELLAR_PUBLIC_KEY).optional(),

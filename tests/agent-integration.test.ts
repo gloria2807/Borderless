@@ -147,6 +147,6 @@ describe("approval flow", () => {
     const r = await runAgent(database, DEMO_HOUSEHOLD_ID, { execute: false });
     await database.update(s.agentPolicies).set({ perPurchaseLimitNgn: 500 });
     const [p] = await database.select().from(s.purchases).where(eq(s.purchases.id, r.awaitingApproval[0]!));
-    await expect(approvePurchase(database, p!.id, { termsHash: p!.approvalTermsHash! })).rejects.toThrow(/per-purchase limit/);
+    await expect(approvePurchase(database, p!.id, { termsHash: p!.approvalTermsHash! })).rejects.toThrow(/per-request maximum/);
   });
 });

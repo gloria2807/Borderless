@@ -18,11 +18,19 @@ export function demoElectricityToken(txHash: string): string {
   return digits.match(/.{4}/g)!.join("-");
 }
 
+/** The demo household's distribution company (simulated). Its tariff applies through every authorised vendor. */
+export const DEMO_DISCO = "Demo Eko DisCo";
+/** Simulated Band B tariff. Vendors don't set tariffs; the DisCo does. */
+export const DEMO_DISCO_TARIFF_NGN_PER_KWH = 225;
+
 export interface ElectricityConfig {
   id: string;
   name: string;
   payToEnv: string;
   tariffNgnPerKwh: number;
+  /** Flat convenience fee the vendor keeps from each vend; the rest buys units at the tariff. */
+  serviceFeeNgn: number;
+  distributionCompanies: string[];
   minAmountNgn: number;
   maxAmountNgn: number;
   stepNgn: number;
@@ -42,6 +50,7 @@ export function createElectricityProvider(cfg: ElectricityConfig): ProviderModul
     unit: "kWh",
     payToEnv: cfg.payToEnv,
     offerSummary: cfg.offerSummary,
+    distributionCompanies: cfg.distributionCompanies,
   };
   const product = (amountNgn: number): Product => {
     if (!Number.isInteger(amountNgn) || amountNgn < cfg.minAmountNgn || amountNgn > cfg.maxAmountNgn || amountNgn % cfg.stepNgn !== 0) {
@@ -50,7 +59,7 @@ export function createElectricityProvider(cfg: ElectricityConfig): ProviderModul
         `${cfg.name}: purchases must be ${naira(cfg.minAmountNgn)}–${naira(cfg.maxAmountNgn)} in ${naira(cfg.stepNgn)} steps.`,
       );
     }
-    const kwh = Math.floor((amountNgn / cfg.tariffNgnPerKwh) * 10) / 10;
+    const kwh = Math.floor(((amountNgn - cfg.serviceFeeNgn) / cfg.tariffNgnPerKwh) * 10) / 10;
     return { code: `elec_${amountNgn}`, providerId: cfg.id, kind: "electricity", label: `${naira(amountNgn)} electricity`, amountNgn, quantity: kwh, unit: "kWh" };
   };
   const listed = [1_000, 1_500, 2_000, 3_000, 4_000, 5_000].filter((a) => a >= cfg.minAmountNgn && a % cfg.stepNgn === 0);
@@ -71,6 +80,8 @@ export function createElectricityProvider(cfg: ElectricityConfig): ProviderModul
         details: {
           unitsVended: p.quantity,
           tariffNgnPerKwh: cfg.tariffNgnPerKwh,
+          serviceFeeNgn: cfg.serviceFeeNgn,
+          distributionCompany: cfg.distributionCompanies[0],
           tariffNote: "Demo tariff, not a real DisCo rate",
           tokenNote: "Demo token, not valid on any physical meter",
         },
@@ -83,22 +94,26 @@ export const electricityProvider = createElectricityProvider({
   id: "prv_demo_electricity",
   name: "Demo Prepaid Electricity",
   payToEnv: "PROVIDER_ELECTRICITY_PAYTO",
-  tariffNgnPerKwh: 225,
+  tariffNgnPerKwh: DEMO_DISCO_TARIFF_NGN_PER_KWH,
+  serviceFeeNgn: 100,
+  distributionCompanies: [DEMO_DISCO],
   minAmountNgn: 1_000,
   maxAmountNgn: 20_000,
   stepNgn: 500,
-  offerSummary: "₦225/kWh, flexible amounts from ₦1,000 in ₦500 steps.",
+  offerSummary: "Authorised vendor for Demo Eko DisCo. Flexible amounts from ₦1,000 in ₦500 steps; ₦100 service fee per vend.",
 });
 
 export const electricityProviderB = createElectricityProvider({
   id: "prv_demo_powergrid",
   name: "Demo PowerGrid Vend",
   payToEnv: "PROVIDER_POWERGRID_PAYTO",
-  tariffNgnPerKwh: 210,
+  tariffNgnPerKwh: DEMO_DISCO_TARIFF_NGN_PER_KWH,
+  serviceFeeNgn: 0,
+  distributionCompanies: [DEMO_DISCO],
   minAmountNgn: 2_000,
   maxAmountNgn: 20_000,
   stepNgn: 1_000,
-  offerSummary: "Cheaper at ₦210/kWh, but only from ₦2,000 in ₦1,000 steps.",
+  offerSummary: "Authorised vendor for Demo Eko DisCo. No service fee, but only from ₦2,000 in ₦1,000 steps.",
 });
 
 /** Back-compat helpers bound to the original provider (tests, scripts). */

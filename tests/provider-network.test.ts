@@ -124,7 +124,7 @@ describe("agent discovery over HTTP", () => {
 
   it("fetches the registry and each provider's document, and verifies them", async () => {
     const { ctx, pf } = await ctxWith();
-    const r = (await callTool(ctx, "discover_providers", { utility: "data" })) as Discovered;
+    const r = (await callTool(ctx, "discover_services", { utility: "data" })) as Discovered;
     expect(pf.calls.map((c) => c.url)).toEqual(["/api/providers", "/api/providers/prv_demo_data/service", "/api/providers/prv_demo_datalink/service"]);
     expect(r.providers.map((p) => [p.provider_id, p.verified])).toEqual([["prv_demo_data", true], ["prv_demo_datalink", true]]);
     expect(r.providers[1]!.paid_endpoint?.path).toBe("/api/providers/prv_demo_datalink/purchase");
@@ -134,7 +134,7 @@ describe("agent discovery over HTTP", () => {
   it("discovery is free: it creates no quote, purchase or payment and changes no device", async () => {
     const { ctx, pf } = await ctxWith();
     const before = await database.select().from(s.utilityBalances);
-    await callTool(ctx, "discover_providers", { utility: "electricity" });
+    await callTool(ctx, "discover_services", { utility: "electricity" });
     expect(pf.calls.every((c) => c.kind === "discovery")).toBe(true);
     expect(await database.select().from(s.providerQuotes)).toHaveLength(0);
     expect(await database.select().from(s.purchases)).toHaveLength(0);
@@ -143,7 +143,7 @@ describe("agent discovery over HTTP", () => {
 
   it("a provider publishing a different payee is marked unverified and cannot be quoted or paid", async () => {
     const { ctx } = await ctxWith({ service: (id, d) => (id === "prv_demo_powergrid" ? { ...d, payment: { ...(d.payment as object), payTo: TEST_KEYS.agent.publicKey() } } : d) });
-    const r = (await callTool(ctx, "discover_providers", { utility: "electricity" })) as Discovered;
+    const r = (await callTool(ctx, "discover_services", { utility: "electricity" })) as Discovered;
     const pg = r.providers.find((p) => p.provider_id === "prv_demo_powergrid")!;
     expect(pg.verified).toBe(false);
     expect(pg.verification_problems.join(" ")).toMatch(/registered wallet/);
@@ -155,7 +155,7 @@ describe("agent discovery over HTTP", () => {
 
   it("a provider whose document is unavailable is reported, not trusted", async () => {
     const { ctx } = await ctxWith({ service: (id, d) => (id === "prv_demo_topuphub" ? new Response("down", { status: 503 }) : d) });
-    const r = (await callTool(ctx, "discover_providers", { utility: "airtime" })) as Discovered;
+    const r = (await callTool(ctx, "discover_services", { utility: "airtime" })) as Discovered;
     const hub = r.providers.find((p) => p.provider_id === "prv_demo_topuphub")!;
     expect(hub.verified).toBe(false);
     expect(hub.verification_problems.join(" ")).toMatch(/unavailable/);

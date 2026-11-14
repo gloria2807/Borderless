@@ -14,12 +14,12 @@ import { startAgentRun } from "@/server/agent/runtime/executor";
 import { appendRunEvent, createRun, finishRun, listRunEvents } from "@/server/agent/runtime/run-log";
 import type { Database } from "@/server/db/client";
 import * as s from "@/server/db/schema";
-import { DEMO_HOUSEHOLD_ID, resetDemo } from "@/server/household/seed";
+import { DEMO_HOUSEHOLD_ID } from "@/server/household/seed";
 import { approvePurchase, ApprovalExpiredError, declinePurchase, expireApprovals } from "@/server/transactions/approvals";
 import { createPurchase, PolicyDeniedError } from "@/server/transactions/purchases";
 import { sweepInterruptedPurchases } from "@/server/transactions/sweep";
 import { getRunView } from "@/server/views/runs";
-import { configureTestEnv, freshDatabase } from "./helpers";
+import { configureTestEnv, freshDatabase, resetScenario } from "./helpers";
 import { providerFetch } from "./provider-fetch";
 
 let database: Database;
@@ -64,7 +64,7 @@ async function newRun() {
 
 describe("run event stream (SSE)", () => {
   it("replays a finished run in order, then ends", async () => {
-    await resetDemo(database, "budget-exhausted");
+    await resetScenario(database, "budget-exhausted");
     const { runId, done } = await startAgentRun(database, { householdId: DEMO_HOUSEHOLD_ID, mode: "deterministic", buyer: { fetchImpl: providerFetch().fetchImpl } });
     await done;
     const res = await stream(runId);
@@ -108,7 +108,7 @@ describe("run event stream (SSE)", () => {
 
 describe("approval expiry", () => {
   async function parked(ttlSeconds = 180, withRun = false) {
-    await resetDemo(database, "needs-approval");
+    await resetScenario(database, "needs-approval");
     const runId = withRun ? await newRun() : undefined;
     await database.update(s.agentPolicies).set({ approvalTtlSeconds: ttlSeconds });
     return { ...(await createPurchase(database, { householdId: DEMO_HOUSEHOLD_ID, kind: "electricity", amountNgn: 5000, initiatedBy: "agent", runId })), runId: runId! };
@@ -168,7 +168,7 @@ describe("approval expiry", () => {
 
 describe("run read model", () => {
   it("returns the run, its ordered events and its purchases with approval deadlines", async () => {
-    await resetDemo(database, "needs-approval");
+    await resetScenario(database, "needs-approval");
     const { runId, done } = await startAgentRun(database, { householdId: DEMO_HOUSEHOLD_ID, mode: "deterministic", buyer: { fetchImpl: providerFetch().fetchImpl } });
     await done;
     const view = (await getRunView(DEMO_HOUSEHOLD_ID, runId))!;

@@ -15,7 +15,9 @@ test.describe("overview", () => {
     for (const name of ["Electricity", "Airtime", "Mobile data"]) {
       await expect(page.getByRole("img", { name: new RegExp(`^${name}:`) })).toBeVisible();
     }
-    await expect(page.getByRole("main").getByText("₦8,000").first()).toBeVisible(); // remaining budget
+    await expect(page.getByRole("main").getByText("8.00 USDC", { exact: true }).first()).toBeVisible(); // remaining household budget, in test USDC
+    await expect(page.getByRole("button", { name: "Simulate low balance" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Spending authority" })).toBeVisible();
     await expect(page.getByText(/testnet USDC, which has no monetary value/)).toBeVisible();
   });
 
@@ -53,7 +55,7 @@ test("approval: a parked purchase can be declined without paying", async ({ page
   await loadScenario(request, "needs-approval");
   await page.goto("/overview");
   await assess(page);
-  const prompt = page.getByText(/^Buy .* electricity for/);
+  const prompt = page.getByText(/^Buy .* electricity/);
   await expect(prompt).toBeVisible();
   await page.getByRole("button", { name: "Decline" }).click();
   await expect(page.getByText("Purchase declined")).toBeVisible();
@@ -84,11 +86,12 @@ test("settings: revoking authority stops purchasing", async ({ page, request }) 
 test("settings: invalid limits are explained before saving", async ({ page, request }) => {
   await loadScenario(request, "both-low");
   await page.goto("/settings");
-  const threshold = page.getByLabel("Ask me before purchases above");
-  await threshold.fill("9000");
-  await expect(page.getByText(/approval threshold is above the per-purchase limit/)).toBeVisible();
+  const threshold = page.getByLabel("Automatic purchases, up to (per request)");
+  await expect(threshold).toHaveValue("2.00"); // the persona: 2 USDC automatic
+  await threshold.fill("9");
+  await expect(page.getByText(/automatic limit is above the largest single request/)).toBeVisible();
   await page.getByRole("button", { name: "Discard changes" }).click();
-  await expect(threshold).toHaveValue("4,000");
+  await expect(page.getByLabel("Automatic purchases, up to (per request)")).toHaveValue("2.00");
 });
 
 test("demo controls: load a scenario from the picker", async ({ page, request }) => {

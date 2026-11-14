@@ -8,6 +8,7 @@ import * as s from "../db/schema";
 import type { UtilityKind } from "../db/schema";
 import { DEFAULT_SCENARIO_ID, SCENARIOS, scenarioById, type ScenarioDefinition } from "../demo/scenarios";
 import { ALL_PROVIDERS, PROVIDERS } from "../providers/registry";
+import { DEMO_DISCO } from "../providers/electricity";
 import { recordEvent } from "../transactions/events";
 
 export const DEMO_HOUSEHOLD_ID = "hh_demo";
@@ -42,8 +43,8 @@ export async function seedDemoHousehold(db: Database, scenarioId: string = DEFAU
 
   await db.insert(s.demoScenarios).values(SCENARIOS.map((x) => ({ id: x.id, name: x.name, description: x.summary, config: x })));
 
-  await db.insert(s.households).values({ id: DEMO_HOUSEHOLD_ID, name: "Adeyemi Household", simulatedNow: now });
-  await db.insert(s.householdMembers).values({ id: "mem_demo_owner", householdId: DEMO_HOUSEHOLD_ID, name: "Household owner", role: "owner" });
+  await db.insert(s.households).values({ id: DEMO_HOUSEHOLD_ID, name: "Okafor Household", simulatedNow: now });
+  await db.insert(s.householdMembers).values({ id: "mem_demo_owner", householdId: DEMO_HOUSEHOLD_ID, name: "Adaeze Okafor", role: "owner" });
 
   await db.insert(s.householdBudgets).values({
     id: "bud_demo_nov",
@@ -59,9 +60,14 @@ export async function seedDemoHousehold(db: Database, scenarioId: string = DEFAU
   await db.insert(s.agentPolicies).values({
     householdId: DEMO_HOUSEHOLD_ID,
     autoPurchaseEnabled: true,
-    perPurchaseLimitNgn: 5_000,
-    overallAgentLimitNgn: 8_000,
-    manualApprovalThresholdNgn: 4_000,
+    // Demo household owner's delegated authority (1 test USDC = ₦1,000 at the fixed demo rate):
+    // automatic purchases up to 2 USDC each, approval above 2 USDC, at most 4 USDC in one request
+    // or one agent task, 10 USDC a day, 60 USDC across the month.
+    perPurchaseLimitNgn: 4_000,
+    manualApprovalThresholdNgn: 2_000,
+    taskBudgetNgn: 4_000,
+    dailyAgentBudgetNgn: 10_000,
+    overallAgentLimitNgn: 60_000,
     ...scenario.policy,
     priorities: ["electricity", "data", "airtime"],
     approvedServices: ["electricity", "airtime", "data"],
@@ -72,7 +78,7 @@ export async function seedDemoHousehold(db: Database, scenarioId: string = DEFAU
   if (scenario.faults?.length) await db.insert(s.demoFaults).values(scenario.faults.map((key) => ({ key, enabled: true })));
 
   await db.insert(s.utilityAccounts).values([
-    { id: DEMO_ACCOUNTS.electricity, householdId: DEMO_HOUSEHOLD_ID, kind: "electricity", providerId: PROVIDERS.electricity.id, label: "Home meter", identifier: "45012345678" },
+    { id: DEMO_ACCOUNTS.electricity, householdId: DEMO_HOUSEHOLD_ID, kind: "electricity", providerId: PROVIDERS.electricity.id, label: "Home meter", identifier: "45012345678", distributionCompany: DEMO_DISCO },
     { id: DEMO_ACCOUNTS.airtime, householdId: DEMO_HOUSEHOLD_ID, kind: "airtime", providerId: PROVIDERS.airtime.id, label: "Owner's line", identifier: "+2348030000417", network: "mtn" },
     { id: DEMO_ACCOUNTS.data, householdId: DEMO_HOUSEHOLD_ID, kind: "data", providerId: PROVIDERS.data.id, label: "Owner's line", identifier: "+2348030000417", network: "mtn" },
   ]);

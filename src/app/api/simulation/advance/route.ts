@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { runAgent } from "@/server/agent/run";
+import { agentPaused, runAgent } from "@/server/agent/run";
 import { action, DEMO_HOUSEHOLD, ok, parseBody } from "@/server/api";
 import { db } from "@/server/db/client";
 import { advanceTime, MAX_ADVANCE_HOURS } from "@/server/usage/simulator";
@@ -19,11 +19,13 @@ export const POST = action(async (request) => {
   if (body instanceof Response) return body;
   const database = db();
   const advanced = await advanceTime(database, DEMO_HOUSEHOLD, body.hours);
-  const agent = body.runAgent ? await runAgent(database, DEMO_HOUSEHOLD, { trigger: "tick" }) : null;
+  const paused = await agentPaused(database, DEMO_HOUSEHOLD);
+  const agent = body.runAgent && !paused ? await runAgent(database, DEMO_HOUSEHOLD, { trigger: "tick" }) : null;
   return ok({
     simNow: advanced.to.toISOString(),
     consumed: advanced.consumed,
     expiredBundles: advanced.expiredBundles,
     agent: agent ? { decisionId: agent.decisionId, outcome: agent.decision.outcome, headline: agent.explanation.headline } : null,
+    agentPaused: paused,
   });
 });

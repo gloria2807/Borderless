@@ -6,7 +6,7 @@
  * agent's wallet from a visitor's browser.
  */
 import { z } from "zod";
-import { AgentBusyError } from "./agent/run";
+import { AgentBusyError, AgentPausedError } from "./agent/run";
 import { HouseholdNotFoundError } from "./household/state";
 import { ProductError } from "./providers/types";
 import { ApprovalExpiredError, ApprovalStateError, ApprovalTermsChangedError, ApprovalTermsRequiredError } from "./transactions/approvals";
@@ -43,6 +43,7 @@ export function handleError(err: unknown): Response {
   if (err instanceof PolicyDeniedError) return fail(422, err.code, err.message, { violations: err.violations });
   if (err instanceof PurchaseConflictError) return fail(409, err.code, err.message, { purchaseId: err.existingPurchaseId });
   if (err instanceof AgentBusyError) return fail(409, err.code, err.message);
+  if (err instanceof AgentPausedError) return fail(409, err.code, err.message);
   if (err instanceof ApprovalStateError) return fail(409, err.code, err.message);
   if (err instanceof ApprovalExpiredError) return fail(410, err.code, err.message);
   if (err instanceof ApprovalTermsRequiredError) return fail(400, err.code, err.message);

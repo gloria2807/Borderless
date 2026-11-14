@@ -10,7 +10,7 @@ const HOUR = 3_600_000;
 const TX = "a".repeat(64);
 
 const account = (o: Partial<AccountRow>): AccountRow => ({
-  id: "acc", householdId: "hh", kind: "airtime", providerId: "prv", label: "x", identifier: "+2348030000417", network: "mtn", createdAt: NOW, ...o,
+  id: "acc", householdId: "hh", kind: "airtime", providerId: "prv", label: "x", identifier: "+2348030000417", network: "mtn", distributionCompany: null, createdAt: NOW, ...o,
 });
 const balance = (o: Partial<BalanceRow>): BalanceRow => ({
   accountId: "acc", balance: 0, unit: "MB", baselineUsagePerHour: 1, usageMultiplier: 1, expiresAt: null, activeBundle: null, updatedAt: NOW, ...o,
@@ -33,7 +33,7 @@ describe("registry", () => {
 
 describe("electricity provider", () => {
   it("vends at the demo tariff, rounding units down", () => {
-    expect(electricityProduct(3_000)).toMatchObject({ quantity: 13.3, unit: "kWh", amountNgn: 3_000 });
+    expect(electricityProduct(3_000)).toMatchObject({ quantity: 12.8, unit: "kWh", amountNgn: 3_000 });
   });
   it("enforces minimum, maximum and ₦500 steps", () => {
     for (const bad of [750, 1_250, 25_000, Number.NaN]) expect(() => electricityProduct(bad)).toThrow(ProductError);
@@ -46,7 +46,7 @@ describe("electricity provider", () => {
   });
   it("credits the meter and issues a deterministic 20-digit demo token", () => {
     const out = electricityProvider.fulfil({ product: electricityProduct(3_000), balance: balance({ balance: 8, unit: "kWh" }), txHash: TX, simNow: NOW });
-    expect(out.balanceAfter).toBe(21.3);
+    expect(out.balanceAfter).toBe(20.8);
     expect(out.demoToken).toMatch(/^\d{4}(-\d{4}){4}$/);
     expect(out.demoToken).toBe(demoElectricityToken(TX));
     expect(demoElectricityToken("b".repeat(64))).not.toBe(out.demoToken);

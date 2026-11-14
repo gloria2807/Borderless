@@ -22,6 +22,8 @@ import type { MobileNetwork, PaymentStatus, PurchaseStage, UtilityKind, ServiceT
 
 export interface PolicyRules {
   autoPurchaseEnabled: boolean;
+  /** The owner paused Borderless (or pressed emergency stop): no agent purchase may proceed. */
+  agentPaused?: boolean;
   perPurchaseLimitNgn: number;
   overallAgentLimitNgn: number;
   manualApprovalThresholdNgn: number;
@@ -34,6 +36,8 @@ export interface PolicyRules {
   dailyAgentBudgetNgn?: number;
   taskBudgetNgn?: number;
   reserveNgn?: number;
+  /** Fixed demo rate (NGN per test USDC), so every check also states amounts in USDC. Display only. */
+  ngnPerUsdc?: number;
   /** Most the agent may pay for one information service. */
   intelligenceCapNgn?: number;
   maxPerUtilityNgn?: Partial<Record<UtilityKind, number>>;
@@ -142,6 +146,7 @@ export interface PolicyEvidence {
 
 export type ViolationCode =
   | "agent_disabled"
+  | "agent_paused"
   | "service_not_approved"
   | "provider_not_approved"
   | "network_not_approved"
@@ -201,6 +206,8 @@ export function evaluateSpendingAuthority(
   const checks: PolicyCheck[] = [];
   const violations: Violation[] = [];
   const amount = intent.amountNgn;
+  /** Amounts in the owner's terms: naira of household value and its test-USDC equivalent. */
+  const fmt = (n: number) => (policy.ngnPerUsdc ? `${naira(n)} (${(n / policy.ngnPerUsdc).toFixed(2)} USDC)` : naira(n));
 
   const check = (step: number, key: string, label: string, ok: boolean | "skip", detail: string, failures: Violation[] = []) => {
     checks.push({ step, key, label, status: ok === "skip" ? "skip" : ok ? "pass" : "fail", detail });
@@ -208,7 +215,11 @@ export function evaluateSpendingAuthority(
   };
 
   // 0 — authority switch
-  if (agentInitiated) {
+  if (agentInitiated && policy.agentPaused) {
+    check(0, "authority", "Automatic purchasing is on", false, "The owner has paused Borderless. Nothing is bought until the owner resumes it.", [
+      { code: "agent_paused", message: "Borderless is paused by the owner." },
+    ]);
+  } else if (agentInitiated) {
     const on = policy.autoPurchaseEnabled || !!intent.ownerApproved;
     check(0, "authority", "Automatic purchasing is on", on, on ? "The owner has granted purchasing authority." : "The owner has turned automatic purchasing off.", [
       { code: "agent_disabled", message: "Automatic purchasing is turned off." },
@@ -250,7 +261,7 @@ export function evaluateSpendingAuthority(
   // 5 — per-request cap (+ per-utility cap)
   const capFails: Violation[] = [];
   if (amount > policy.perPurchaseLimitNgn) {
-    capFails.push({ code: "exceeds_per_purchase_limit", message: `${naira(amount)} is above the ${naira(policy.perPurchaseLimitNgn)} per-purchase limit.` });
+    capFails.push({ code: "exceeds_per_purchase_limit", message: `${fmt(amount)} is above the ${fmt(policy.perPurchaseLimitNgn)} per-request maximum.` });
   }
   // Information purchases have their own cap; utility credit has the per-utility cap.
   const information = (intent.serviceType ?? "utility_topup") !== "utility_topup";
@@ -258,12 +269,12 @@ export function evaluateSpendingAuthority(
   if (utilityCap !== undefined && amount > utilityCap) {
     capFails.push(
       information
-        ? { code: "exceeds_intelligence_cap", message: `${naira(amount)} is above the ${naira(utilityCap)} limit for one information purchase.` }
-        : { code: "exceeds_utility_limit", message: `${naira(amount)} is above the ${naira(utilityCap)} limit for ${intent.kind}.` },
+        ? { code: "exceeds_intelligence_cap", message: `${fmt(amount)} is above the ${fmt(utilityCap)} limit for one information purchase.` }
+        : { code: "exceeds_utility_limit", message: `${fmt(amount)} is above the ${fmt(utilityCap)} limit for ${intent.kind}.` },
     );
   }
   check(5, "per_request_cap", "Within the per-request cap", capFails.length === 0,
-    capFails.length ? capFails.map((v) => v.message).join(" ") : `${naira(amount)} ≤ ${naira(Math.min(policy.perPurchaseLimitNgn, utilityCap ?? Infinity))}${information ? " (information purchase)" : ""}.`, capFails);
+    capFails.length ? capFails.map((v) => v.message).join(" ") : `${fmt(amount)} ≤ ${fmt(Math.min(policy.perPurchaseLimitNgn, utilityCap ?? Infinity))}${information ? " (information purchase)" : ""}.`, capFails);
 
   // 6 — task budget (agent runs only)
   if (!agentInitiated || !evidence.runId || policy.taskBudgetNgn === undefined) {
@@ -271,8 +282,8 @@ export function evaluateSpendingAuthority(
   } else {
     const usedByRun = others.filter((e) => e.runId === evidence.runId && counts(e)).reduce((t, e) => t + e.amountNgn, 0);
     const ok = usedByRun + amount <= policy.taskBudgetNgn;
-    check(6, "task_budget", "Task budget has room", ok, `${naira(usedByRun)} used by this run; ${naira(amount)} more against a ${naira(policy.taskBudgetNgn)} task budget.`, [
-      { code: "exceeds_task_budget", message: `This would take the run past its ${naira(policy.taskBudgetNgn)} task budget (${naira(usedByRun)} already used).` },
+    check(6, "task_budget", "Task budget has room", ok, `${fmt(usedByRun)} used by this run; ${fmt(amount)} more against a ${fmt(policy.taskBudgetNgn)} task budget.`, [
+      { code: "exceeds_task_budget", message: `This would take the run past its ${fmt(policy.taskBudgetNgn)} task budget (${fmt(usedByRun)} already used).` },
     ]);
   }
 
@@ -283,8 +294,8 @@ export function evaluateSpendingAuthority(
     const dayStart = startOfHouseholdDay(now);
     const usedToday = others.filter((e) => isAgent(e) && counts(e) && e.createdAt >= dayStart).reduce((t, e) => t + e.amountNgn, 0);
     const ok = usedToday + amount <= policy.dailyAgentBudgetNgn;
-    check(7, "daily_budget", "Daily agent budget has room", ok, `${naira(usedToday)} spent or committed today; ${naira(amount)} more against ${naira(policy.dailyAgentBudgetNgn)}.`, [
-      { code: "exceeds_daily_budget", message: `This would take today's agent spending past ${naira(policy.dailyAgentBudgetNgn)} (${naira(usedToday)} already).` },
+    check(7, "daily_budget", "Daily agent budget has room", ok, `${fmt(usedToday)} spent or committed today; ${fmt(amount)} more against ${fmt(policy.dailyAgentBudgetNgn)}.`, [
+      { code: "exceeds_daily_budget", message: `This would take today's agent spending past ${fmt(policy.dailyAgentBudgetNgn)} (${fmt(usedToday)} already).` },
     ]);
   }
 
@@ -295,20 +306,20 @@ export function evaluateSpendingAuthority(
   }
   const reserve = policy.reserveNgn ?? 0;
   if (amount > summary.remainingNgn) {
-    budgetFails.push({ code: "exceeds_budget", message: `${naira(amount)} is more than the ${naira(summary.remainingNgn)} left in the budget.` });
+    budgetFails.push({ code: "exceeds_budget", message: `${fmt(amount)} is more than the ${fmt(summary.remainingNgn)} left in the budget.` });
   } else if (agentInitiated && amount > summary.remainingNgn - reserve) {
-    budgetFails.push({ code: "exceeds_reserve", message: `${naira(amount)} would dip into the ${naira(reserve)} reserve (${naira(summary.remainingNgn)} left).` });
+    budgetFails.push({ code: "exceeds_reserve", message: `${fmt(amount)} would dip into the ${fmt(reserve)} reserve (${fmt(summary.remainingNgn)} left).` });
   }
   if (agentInitiated && amount > summary.agentAuthorityRemainingNgn) {
     budgetFails.push({
       code: "exceeds_agent_authority",
-      message: `${naira(amount)} is more than the ${naira(summary.agentAuthorityRemainingNgn)} of spending authority Borderless has left.`,
+      message: `${fmt(amount)} is more than the ${fmt(summary.agentAuthorityRemainingNgn)} of spending authority Borderless has left.`,
     });
   }
   check(8, "household_budget", "Household budget has room", budgetFails.length === 0,
     budgetFails.length
       ? budgetFails.map((v) => v.message).join(" ")
-      : `${naira(summary.remainingNgn)} left (incl. ${naira(summary.committedNgn)} committed elsewhere)${reserve ? `, ${naira(reserve)} reserve kept` : ""}.`,
+      : `${fmt(summary.remainingNgn)} left (incl. ${fmt(summary.committedNgn)} committed elsewhere)${reserve ? `, ${fmt(reserve)} reserve kept` : ""}.`,
     budgetFails);
 
   // 9 — wallet balance
@@ -338,12 +349,12 @@ export function evaluateSpendingAuthority(
     label: "Owner approval",
     status: needsApproval ? "approval" : "pass",
     detail: needsApproval
-      ? `${naira(amount)} is above the ${naira(policy.manualApprovalThresholdNgn)} approval threshold.`
+      ? `${fmt(amount)} is above the ${fmt(policy.manualApprovalThresholdNgn)} approval threshold.`
       : intent.ownerApproved
         ? "Approved by the owner."
         : !agentInitiated
           ? "Owner purchase."
-          : `${naira(amount)} is within the ${naira(policy.manualApprovalThresholdNgn)} approval threshold.`,
+          : `${fmt(amount)} is within the ${fmt(policy.manualApprovalThresholdNgn)} approval threshold.`,
   });
   return { outcome: needsApproval ? "require_approval" : "allow", violations: [], summary, checks };
 }

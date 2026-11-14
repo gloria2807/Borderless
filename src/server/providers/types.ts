@@ -43,6 +43,12 @@ export interface ProviderDefinition {
   payToEnv: string;
   /** One-line description of what distinguishes this provider's offer (shown to agent and UI). */
   offerSummary: string;
+  /**
+   * Electricity only: the distribution companies (DisCos) this vendor is an authorised channel
+   * for. A prepaid meter belongs to the DisCo serving the property; it can only be recharged
+   * through vendors authorised for that DisCo.
+   */
+  distributionCompanies?: string[];
 }
 
 export class ProductError extends Error {

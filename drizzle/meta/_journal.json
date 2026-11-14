@@ -57,6 +57,13 @@
       "when": 1794582076732,
       "tag": "0007_information_services",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1794597165330,
+      "tag": "0008_owner_controls_eligibility",
+      "breakpoints": true
     }
   ]
 }

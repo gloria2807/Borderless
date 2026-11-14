@@ -4,7 +4,7 @@
  * Adding a provider = add an instance here and a payTo wallet (wallets:setup does it).
  */
 import { payToFromEnv } from "../config/env";
-import type { UtilityKind } from "../db/schema";
+import type { MobileNetwork, UtilityKind } from "../db/schema";
 import { airtimeProvider, airtimeProviderB } from "./airtime";
 import { dataProvider, dataProviderB } from "./data";
 import { gridSenseDiagnostics, meterLabDiagnostics } from "./diagnostics";
@@ -56,6 +56,44 @@ export function providersFor(kind: UtilityKind): ProviderModule[] {
 /** Providers that sell INFORMATION about a utility (e.g. meter diagnostics). */
 export function intelligenceProvidersFor(kind: UtilityKind): ProviderModule[] {
   return ALL_PROVIDERS.filter((m) => m.definition.category === "intelligence" && m.definition.kind === kind);
+}
+
+/** What makes a provider able to serve a specific household account. */
+export interface AccountEligibilityInput {
+  kind: UtilityKind;
+  network: MobileNetwork | null;
+  distributionCompany: string | null;
+}
+
+export interface Eligibility {
+  eligible: boolean;
+  reason: string;
+}
+
+/**
+ * Real-world constraints, not price: a prepaid meter can only be recharged through vendors
+ * authorised for the DisCo that serves it; airtime and data can only be bought on the
+ * line's own mobile network. A cheaper offer elsewhere is not an option for this household.
+ */
+export function eligibilityFor(m: ProviderModule, account: AccountEligibilityInput): Eligibility {
+  const d = m.definition;
+  if (d.kind !== account.kind) return { eligible: false, reason: `Sells ${d.kind}, not ${account.kind}.` };
+  if (account.kind === "electricity") {
+    const discos = d.distributionCompanies ?? [];
+    if (!account.distributionCompany) return { eligible: false, reason: "The meter's distribution company is unknown, so no vendor can be confirmed." };
+    return discos.includes(account.distributionCompany)
+      ? { eligible: true, reason: `Authorised vendor for ${account.distributionCompany}, which serves this meter.` }
+      : { eligible: false, reason: `Sells only for ${discos.join(", ") || "other distribution companies"}; this meter is served by ${account.distributionCompany}.` };
+  }
+  if (!account.network) return { eligible: false, reason: "The line's mobile network is unknown." };
+  return d.networks.includes(account.network)
+    ? { eligible: true, reason: `Serves ${account.network.toUpperCase()}, the line's network.` }
+    : { eligible: false, reason: `Doesn't serve ${account.network.toUpperCase()}; the household can't switch networks to use it.` };
+}
+
+/** Utility providers that can actually serve this account. */
+export function eligibleProvidersFor(account: AccountEligibilityInput): ProviderModule[] {
+  return providersFor(account.kind).filter((m) => eligibilityFor(m, account).eligible);
 }
 
 /** Every product from every provider of a utility (each carries its providerId). */

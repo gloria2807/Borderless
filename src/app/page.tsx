@@ -202,7 +202,7 @@ export default function LandingPage() {
                 see the provider refuse.
               </p>
               <ul className="mt-6 space-y-2 text-[13.5px] text-white/80">
-                {["Discovery and quotes are free; the resource is not", "One settlement per payment, verified before release", "A paid ₦300 meter diagnostic can change what gets bought next"].map((t) => (
+                {["Discovery and quotes are free; the resource is not", "One settlement per payment, verified before release", "A paid 0.30 USDC meter diagnostic can change what gets bought next"].map((t) => (
                   <li key={t} className="flex gap-2.5">
                     <Check className="mt-0.5 size-4 shrink-0 text-green-bright" aria-hidden />
                     {t}
@@ -223,7 +223,7 @@ export default function LandingPage() {
                 {"\n"}    &quot;scheme&quot;: &quot;exact&quot;,
                 {"\n"}    &quot;network&quot;: <span className="text-green-bright">&quot;stellar:testnet&quot;</span>,
                 {"\n"}    &quot;asset&quot;: &quot;USDC (testnet)&quot;,
-                {"\n"}    &quot;amount&quot;: &quot;30000&quot;, <span className="text-white/60">{"// 0.003 USDC"}</span>
+                {"\n"}    &quot;amount&quot;: &quot;3000000&quot;, <span className="text-white/60">{"// 0.30 USDC"}</span>
                 {"\n"}    &quot;payTo&quot;: &quot;&lt;provider&apos;s registered wallet&gt;&quot;
                 {"\n"}  {"}"}]
                 {"\n"}{"}"}

@@ -28,9 +28,17 @@ export async function runDeterministicPlanner(ctx: ToolContext): Promise<Planner
     steps += 1;
     return callTool(ctx, name, args);
   };
+  if (ctx.directive) return runDirective(ctx, call, () => steps);
 
   await call("observe_household", {});
   for (const utility of ["electricity", "airtime", "data"] as const) await call("inspect_utility", { utility });
+  // Discover over HTTP for every utility that needs attention: who can serve this account,
+  // verified against the registry, and what they offer. Nothing is discovered for healthy ones.
+  const needing = (await buildDecisionInput(ctx.db, ctx.householdId)).utilities.filter((u) => u.forecast.urgency === "critical" || u.forecast.urgency === "low");
+  for (const u of needing) {
+    await call("discover_services", { utility: u.kind });
+    await call("search_offers", { utility: u.kind, max_price_usdc: null });
+  }
   await call("get_allocation_recommendation", {});
 
   const record = async (d: ReturnType<typeof decide>) => {
@@ -64,14 +72,20 @@ export async function runDeterministicPlanner(ctx: ToolContext): Promise<Planner
     }
   }
 
+  /** What actually happened to each purchase, stated first in the run summary. */
+  const outcomes: string[] = [];
   const attempt = async (plan: PlannedPurchase, why: string): Promise<Attempt> => {
     const quote = (await call("request_quote", { utility: plan.kind, provider_id: plan.product.providerId, product_code: plan.product.code })) as { quote_id?: string; error?: string };
     if (!quote.quote_id) return { outcome: "retry", why: quote.error ?? "no quote" };
-    const bought = (await call("purchase_utility", { quote_id: quote.quote_id, reason: why })) as { purchase_id?: string; status?: string; payment_status?: string; failure?: string | null; failure_code?: string | null; reason?: string };
+    const bought = (await call("buy_service", { quote_id: quote.quote_id, reason: why })) as { purchase_id?: string; status?: string; payment_status?: string; failure?: string | null; failure_code?: string | null; reason?: string };
     if (bought.purchase_id && bought.status === "completed") {
       await call("verify_fulfilment", { purchase_id: bought.purchase_id });
+      outcomes.push(`${plan.product.label}: paid on Stellar testnet and released.`);
       return { outcome: "done" };
     }
+    if (bought.status === "needs_attention") outcomes.push(`${plan.product.label}: payment ${bought.payment_status === "confirmed" ? "confirmed" : bought.payment_status ?? "unclear"}, but the provider did not release it. It can be retried without paying again.`);
+    else if (bought.status === "awaiting_owner_approval") outcomes.push(`${plan.product.label}: waiting for your approval; nothing paid.`);
+    else if (bought.status === "failed" || bought.status === "refused") outcomes.push(`${plan.product.label}: not bought (${bought.failure ?? bought.reason ?? "failed before payment"}); nothing was charged.`);
     // Only retry elsewhere when nothing was charged; never pay twice for an ambiguous outcome.
     // A different provider only helps with provider-side failures. Wallet, policy and configuration
     // failures would fail the same way anywhere, so they stop here.
@@ -113,7 +127,43 @@ export async function runDeterministicPlanner(ctx: ToolContext): Promise<Planner
   }
 
   if (decision.selected.length) await call("reassess_household", {});
-  const summary = explanation.headline + ". " + explanation.reasoning.slice(0, 900);
+  const summary = (outcomes.length ? `Outcome: ${outcomes.join(" ")} ` : "") + explanation.headline + ". " + explanation.reasoning.slice(0, 900);
   await call("finish", { summary, monitoring_next: bought ? "Re-assess after the next simulated usage period." : "Re-assess after the next simulated usage period, or when the owner changes the rules." });
   return { status: "completed", summary: ctx.finished?.summary ?? explanation.headline, steps, usage: { prompt_tokens: 0, completion_tokens: 0 } };
+}
+
+/**
+ * Scenario C: the operator tells Borderless to make one specific purchase. The planner uses the
+ * normal tools (price list, quote, dry run, buy), and insists even when the dry run says no —
+ * standing in for an agent that has been persuaded to overspend. The wallet's spending rules,
+ * evaluated in code before anything is signed, are what stop it.
+ */
+async function runDirective(ctx: ToolContext, call: (name: string, args: unknown) => Promise<unknown>, steps: () => number): Promise<PlannerOutcome> {
+  const d = ctx.directive!;
+  await appendRunEvent(ctx.db, ctx.runId, {
+    stage: "planning",
+    type: "planner.directive",
+    utility: d.kind,
+    reason: `Operator instruction (demo): buy ₦${d.amountNgn.toLocaleString("en-NG")} of ${d.kind}. Borderless will request it through its normal tools; the wallet's spending rules decide whether any money moves.`,
+  });
+  await call("observe_household", {});
+  await call("inspect_budget", {});
+  const search = (await call("search_offers", { utility: d.kind, max_price_usdc: null })) as { offers?: { provider_id: string; price_ngn: number; product_code: string }[] };
+  const offer = search.offers?.find((o) => o.price_ngn === d.amountNgn);
+  let outcome = `No eligible provider sells exactly ₦${d.amountNgn.toLocaleString("en-NG")} of ${d.kind}.`;
+  if (offer) {
+    const quote = (await call("request_quote", { utility: d.kind, provider_id: offer.provider_id, product_code: offer.product_code })) as { quote_id?: string; error?: string };
+    if (quote.quote_id) {
+      await call("evaluate_purchase", { quote_id: quote.quote_id, reason: "Operator instruction (demo)." });
+      const bought = (await call("buy_service", { quote_id: quote.quote_id, reason: "Operator instruction (demo): attempting the purchase anyway, so the wallet's own rules decide." })) as { status?: string; reason?: string };
+      outcome =
+        bought.status === "refused"
+          ? `The wallet refused the purchase before anything was signed: ${bought.reason ?? "outside the owner's rules"}. Nothing was paid.`
+          : bought.status === "awaiting_owner_approval"
+            ? "The purchase is waiting for the owner's approval. Nothing has been paid."
+            : `Purchase outcome: ${bought.status}.`;
+    } else outcome = `No quote: ${quote.error ?? "the provider did not quote"}.`;
+  }
+  await call("finish", { summary: outcome, monitoring_next: "Back to normal monitoring." });
+  return { status: "completed", summary: ctx.finished?.summary ?? outcome, steps: steps(), usage: { prompt_tokens: 0, completion_tokens: 0 } };
 }

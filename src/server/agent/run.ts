@@ -11,7 +11,7 @@ import type { MobileNetwork, UtilityKind } from "../db/schema";
 import { loadHousehold } from "../household/state";
 import { newId } from "../lib/ids";
 import { executePurchase, type BuyerOptions, type ExecuteResult } from "../payments/x402-buyer";
-import { intelligenceProvidersFor, providersFor } from "../providers/registry";
+import { intelligenceProvidersFor, eligibleProvidersFor } from "../providers/registry";
 import type { Product } from "../providers/types";
 import { recordEvent } from "../transactions/events";
 import { createPurchase, OPEN_STAGES, PolicyDeniedError, PurchaseConflictError } from "../transactions/purchases";
@@ -45,8 +45,9 @@ export async function buildDecisionInput(db: Database, householdId: string): Pro
     .where(and(eq(s.purchases.householdId, householdId), inArray(s.purchases.stage, OPEN_STAGES)));
 
   const providerRows = await db.select().from(s.utilityProviders);
+  const accountOf = (kind: UtilityKind) => rows.find((r) => r.account.kind === kind)?.account;
   const servesAccount = (kind: UtilityKind, network: MobileNetwork | null) =>
-    providersFor(kind).filter((m) => kind === "electricity" || (network !== null && m.definition.networks.includes(network)));
+    eligibleProvidersFor({ kind, network, distributionCompany: accountOf(kind)?.distributionCompany ?? null });
 
   const utilities: UtilitySnapshot[] = [];
   for (const { account, balance, provider } of rows) {
@@ -128,12 +129,26 @@ export class AgentBusyError extends Error {
   readonly code = "agent_busy";
 }
 
+/** The owner paused Borderless: it neither assesses nor buys until resumed. */
+export class AgentPausedError extends Error {
+  readonly code = "agent_paused";
+  constructor() {
+    super("Borderless is paused. Resume it from Settings (or the Overview) to let it work again.");
+  }
+}
+
+export async function agentPaused(db: Database, householdId: string): Promise<boolean> {
+  const [row] = await db.select({ paused: s.agentPolicies.agentPaused }).from(s.agentPolicies).where(eq(s.agentPolicies.householdId, householdId));
+  return !!row?.paused;
+}
+
 export async function runAgent(
   db: Database,
   householdId: string,
   opts: { trigger?: "tick" | "manual" | "scenario"; execute?: boolean; buyer?: BuyerOptions } = {},
 ): Promise<AgentRunResult> {
   if (running.has(householdId)) throw new AgentBusyError("Borderless is already assessing this household.");
+  if (await agentPaused(db, householdId)) throw new AgentPausedError();
   running.add(householdId);
   try {
     // Close out purchases interrupted by a crash/restart before deciding anything new.

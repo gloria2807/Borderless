@@ -81,7 +81,7 @@ describe("inspection of a completed information purchase in an agent run", () =>
     await appendRunEvent(database, runId, { stage: "discovering", type: "tool.result", tool: "discover_information_services", result: { services: [{ provider_id: "prv_demo_gridsense" }] } });
     await appendRunEvent(database, runId, { stage: "updating_household", type: "purchase.completed", purchaseId: id });
     await appendRunEvent(database, runId, { stage: "using_result", type: "planner.reassessed", reason: "Re-deciding with the diagnostic report." });
-    await appendRunEvent(database, runId, { stage: "requesting_payment", type: "tool.called", tool: "purchase_utility", input: { quote_id: "qt_x" } });
+    await appendRunEvent(database, runId, { stage: "requesting_payment", type: "tool.called", tool: "buy_service", input: { quote_id: "qt_x" } });
 
     const v = (await getProcurement(DEMO_HOUSEHOLD_ID, id))!;
     expect(v.discovery).toMatchObject({ inRun: true, tool: "discover_information_services" });
@@ -90,7 +90,7 @@ describe("inspection of a completed information purchase in an agent run", () =>
     expect(v.payment).toMatchObject({ txHash: "a".repeat(64), ledger: 123, payTo: TEST_KEYS.gridsense });
     expect(v.released).toMatchObject({ type: "report", report: { finding: "stuck_load" } });
     expect(v.next.source).toBe("run");
-    expect(v.next.items.map((i) => i.title)).toEqual(["Re-decided with the result", "Called purchase_utility"]);
+    expect(v.next.items.map((i) => i.title)).toEqual(["Re-decided with the result", "Called buy_service"]);
     expect(v.steps.filter((x) => x.status === "not_reached").map((x) => x.key)).toEqual(["policy"]); // honestly missing: not recorded here
   });
 

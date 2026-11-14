@@ -59,14 +59,16 @@ const TOOL_LABEL: Record<string, string> = {
   observe_household: "Observed the household",
   inspect_utility: "Analysed a utility",
   inspect_budget: "Checked the budget",
-  discover_providers: "Discovered providers",
+  discover_services: "Discovered providers",
+  read_price_list: "Read a provider's price list",
+  search_offers: "Searched eligible offers",
   compare_offers: "Compared offers",
   get_allocation_recommendation: "Asked the allocation engine",
   request_quote: "Requested a quote",
-  propose_purchase: "Dry-ran the spending rules",
+  evaluate_purchase: "Dry-ran the spending rules",
   discover_information_services: "Discovered information services",
   buy_information: "Bought information",
-  purchase_utility: "Purchase requested",
+  buy_service: "Purchase requested",
   inspect_transaction: "Inspected the transaction",
   verify_fulfilment: "Verified fulfilment",
   reassess_household: "Reassessed the household",
@@ -92,7 +94,14 @@ function toolSummary(tool: string, r: Obj): string | null {
       return `${utility(r.utility)}: ${r.balance} ${r.unit}, about ${hrs(r.hours_of_service_left)} left, forecast confidence ${r.forecast_confidence}`;
     case "inspect_budget":
       return `${naira(Number(r.household_budget_remaining_ngn ?? 0))} left in the budget; this run has spent ${naira(Number(r.spent_by_this_run_ngn ?? 0))}`;
-    case "discover_providers":
+    case "search_offers": {
+      const offers = arr(r.offers);
+      const excluded = arr(r.excluded);
+      return `${offers.length} eligible offer${offers.length === 1 ? "" : "s"} for ${utility(r.utility)}${offers.length ? ` (${offers.map((o) => `${naira(Number(o.price_ngn))} = ${o.price_usdc} USDC`).slice(0, 4).join(", ")}${offers.length > 4 ? ", …" : ""})` : ""}${excluded.length ? `; ${excluded.length} excluded: ${excluded.map((x) => x.why).join(" ")}` : ""}`;
+    }
+    case "read_price_list":
+      return `${r.name}: ${arr(r.price_list).length} products · ${r.eligibility ?? ""}`;
+    case "discover_services":
       return arr(r.providers).map((p) => `${p.name}${p.available ? "" : " (unavailable)"}`).join(", ");
     case "compare_offers":
       return `${arr(r.offers).length} offers compared for ${utility(r.utility)}`;
@@ -102,9 +111,9 @@ function toolSummary(tool: string, r: Obj): string | null {
     }
     case "request_quote":
       return `${r.provider ?? r.provider_id}: ${r.product}, ${naira(Number(r.price_ngn))} = ${r.testnet_usdc} test USDC, valid until ${typeof r.expires_at === "string" ? time(r.expires_at) : "—"}`;
-    case "propose_purchase":
+    case "evaluate_purchase":
       return `${String(r.outcome)}${r.needed === false ? " — not needed now" : ""}`;
-    case "purchase_utility":
+    case "buy_service":
       return r.status === "completed" ? `Paid and delivered${r.balance_after ? ` — balance now ${r.balance_after}` : ""}` : `${String(r.status).replace(/_/g, " ")}${r.reason ? `: ${r.reason}` : r.failure ? `: ${r.failure}` : ""}`;
     case "verify_fulfilment":
       return r.verified ? `Verified: device balance ${r.device_balance_now}` : `Not verified (${r.provider_reports})`;
@@ -217,6 +226,12 @@ function buildItems(events: RunEventDTO[]): Item[] {
         break;
       case "need.identified":
         items.push({ ...base, title: `Need identified: ${utility(e.utility)}`, body: e.reason, tone: "warning" });
+        break;
+      case "planner.directive":
+        items.push({ ...base, title: "Operator instruction (demo)", body: e.reason, tone: "warning" });
+        break;
+      case "run.stopped":
+        items.push({ ...base, title: "Stopped by the owner", body: e.reason, tone: "critical" });
         break;
       case "planner.reassessed":
         items.push({ ...base, title: "Acting on the result", body: e.reason, tone: "info" });
@@ -500,6 +515,7 @@ export function RunConsole({ view }: { view: RunView }) {
   const running = status === "running";
   const st = RUN_STATUS[status] ?? { label: status, tone: "neutral" as Tone };
   const awaiting = view.purchases.filter((p) => p.stage === "awaiting_approval");
+  const attention = view.purchases.some((p) => p.stage === "needs_attention");
   const r = view.run;
 
   return (
@@ -529,8 +545,8 @@ export function RunConsole({ view }: { view: RunView }) {
             </div>
           </div>
           {!running && r.summary && (
-            <div className={cn("mt-4 flex gap-2 rounded-lg p-3 text-[13px] leading-relaxed", status === "completed" ? "bg-green-soft/60 text-fg" : "bg-coral-soft text-fg")}>
-              {status === "completed" ? <Check className="mt-0.5 size-4 shrink-0 text-green" aria-hidden /> : <CircleAlert className="mt-0.5 size-4 shrink-0 text-coral" aria-hidden />}
+            <div className={cn("mt-4 flex gap-2 rounded-lg p-3 text-[13px] leading-relaxed", status !== "completed" ? "bg-coral-soft text-fg" : attention ? "bg-amber-soft text-fg" : "bg-green-soft/60 text-fg")}>
+              {status !== "completed" ? <CircleAlert className="mt-0.5 size-4 shrink-0 text-coral" aria-hidden /> : attention ? <CircleAlert className="mt-0.5 size-4 shrink-0 text-amber" aria-hidden /> : <Check className="mt-0.5 size-4 shrink-0 text-green" aria-hidden />}
               <span>{r.summary}</span>
             </div>
           )}

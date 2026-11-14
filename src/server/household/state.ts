@@ -1,3 +1,4 @@
+import { env } from "../config/env";
 import { and, desc, eq, gte, lt } from "drizzle-orm";
 import type { Database } from "../db/client";
 import * as s from "../db/schema";
@@ -41,6 +42,8 @@ export async function loadHousehold(db: Database, householdId: string) {
 
   const policy: PolicyRules = {
     autoPurchaseEnabled: policyRow.autoPurchaseEnabled,
+    agentPaused: policyRow.agentPaused,
+    ngnPerUsdc: env().DEMO_NGN_PER_TESTNET_USDC,
     perPurchaseLimitNgn: policyRow.perPurchaseLimitNgn,
     overallAgentLimitNgn: policyRow.overallAgentLimitNgn,
     manualApprovalThresholdNgn: policyRow.manualApprovalThresholdNgn,

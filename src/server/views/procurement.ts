@@ -75,7 +75,7 @@ export async function getProcurement(householdId: string, purchaseId: string): P
 
   // Discovery and the agent's next actions, from the run log when the agent bought it.
   const runEvents = p.runId ? await database.select().from(s.agentRunEvents).where(eq(s.agentRunEvents.runId, p.runId)).orderBy(asc(s.agentRunEvents.seq)) : [];
-  const discoveryTool = module.service ? "discover_information_services" : "discover_providers";
+  const discoveryTool = module.service ? "discover_information_services" : "discover_services";
   const discovered = runEvents.find((e) => e.type === "tool.result" && e.tool === discoveryTool && JSON.stringify(e.result ?? {}).includes(`"${p.providerId}"`));
 
   // The provider's actual HTTP 402, as the buyer received and stored it.
