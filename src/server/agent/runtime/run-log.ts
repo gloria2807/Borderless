@@ -5,7 +5,7 @@
  * is always something the backend actually recorded — never a front-end animation.
  */
 import { EventEmitter } from "node:events";
-import { and, desc, eq, gt, inArray } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, sql } from "drizzle-orm";
 import type { Database } from "../../db/client";
 import * as s from "../../db/schema";
 import type { RunStage, UtilityKind } from "../../db/schema";
@@ -28,15 +28,17 @@ export interface RunEventInput {
   error?: string | null;
 }
 
-/** In-process broadcast of persisted events (Server-Sent Events subscribe here). */
+/**
+ * In-process broadcast of persisted events. A Server-Sent Events stream on the same server
+ * gets events instantly from here; streams on other server instances (serverless hosts)
+ * read them from the database instead.
+ */
 const globalBus = globalThis as unknown as { __borderlessRunBus?: EventEmitter };
 export const runBus = (globalBus.__borderlessRunBus ??= (() => {
   const e = new EventEmitter();
   e.setMaxListeners(100);
   return e;
 })());
-
-const seqCounters = new Map<string, number>();
 
 /** JSON-safe copy (Infinity/NaN → null, bigint → string, Dates → ISO). */
 export function jsonSafe(value: unknown): unknown {
@@ -55,19 +57,32 @@ export async function createRun(
   input: { householdId: string; mode: "ai" | "deterministic"; model: string | null; task: string; trigger: "manual" | "tick" | "scenario" | "low_balance"; simTime: Date },
 ): Promise<string> {
   const id = newId("run");
-  await db.insert(s.agentRuns).values({ id, ...input, status: "running", startedAt: new Date() });
-  seqCounters.set(id, 0);
+  const now = new Date();
+  await db.insert(s.agentRuns).values({ id, ...input, status: "running", startedAt: now, heartbeatAt: now });
   return id;
 }
 
+/** Record that a worker is still executing this run (read by stale-run detection on any instance). */
+export async function touchRunHeartbeat(db: Database, runId: string): Promise<void> {
+  await db.update(s.agentRuns).set({ heartbeatAt: new Date() }).where(and(eq(s.agentRuns.id, runId), eq(s.agentRuns.status, "running")));
+}
+
 export async function appendRunEvent(db: Database, runId: string, e: RunEventInput): Promise<RunEventRow> {
-  let seq = seqCounters.get(runId);
-  if (seq === undefined) {
-    const rows = await db.select({ seq: s.agentRunEvents.seq }).from(s.agentRunEvents).where(eq(s.agentRunEvents.runId, runId));
-    seq = rows.reduce((m, r) => Math.max(m, r.seq), 0);
+  // The sequence number is assigned by the database inside the insert (one atomic statement),
+  // not by a per-process counter: an approval on another server instance may append to the
+  // same run. The unique (run, seq) index guarantees no duplicates; a rare clash is retried.
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      return await insertRunEvent(db, runId, e);
+    } catch (err) {
+      const text = `${(err as Error)?.message ?? err} ${String((err as { cause?: unknown })?.cause ?? "")}`;
+      if (attempt >= 4 || !/UNIQUE/i.test(text)) throw err;
+    }
   }
-  seq += 1;
-  seqCounters.set(runId, seq);
+}
+
+async function insertRunEvent(db: Database, runId: string, e: RunEventInput): Promise<RunEventRow> {
+  const seq = sql`(select coalesce(max(${s.agentRunEvents.seq}), 0) + 1 from ${s.agentRunEvents} where ${s.agentRunEvents.runId} = ${runId})`;
   const [row] = await db
     .insert(s.agentRunEvents)
     .values({
@@ -102,7 +117,6 @@ export async function finishRun(
     .update(s.agentRuns)
     .set({ status: patch.status, summary: patch.summary ?? null, error: patch.error ?? null, steps: patch.steps ?? 0, usage: patch.usage === undefined ? null : jsonSafe(patch.usage), endedAt: new Date() })
     .where(eq(s.agentRuns.id, runId));
-  seqCounters.delete(runId);
   runBus.emit(`run:${runId}:end`, { runId, status: patch.status });
 }
 
@@ -125,14 +139,14 @@ export async function markOrphanedRunsInterrupted(db: Database, householdId: str
     .where(and(eq(s.agentRuns.householdId, householdId), inArray(s.agentRuns.status, ["running"])));
   let orphans = running.filter((r) => !liveRunIds.has(r.id));
   if (opts.quietForMs) {
-    // Only runs that have also gone silent: a run with a recent event may belong to another
-    // worker or still be starting up.
+    // Only runs that have also gone silent (no event and no heartbeat): a run with recent
+    // activity belongs to another worker or server instance, or is still starting up.
     const cutoff = Date.now() - opts.quietForMs;
     const quiet: typeof orphans = [];
     for (const r of orphans) {
       const [last] = await db.select({ at: s.agentRunEvents.at }).from(s.agentRunEvents).where(eq(s.agentRunEvents.runId, r.id)).orderBy(desc(s.agentRunEvents.seq)).limit(1);
-      const [run] = await db.select({ startedAt: s.agentRuns.startedAt }).from(s.agentRuns).where(eq(s.agentRuns.id, r.id));
-      const lastActivity = Math.max(last?.at.getTime() ?? 0, run?.startedAt.getTime() ?? 0);
+      const [run] = await db.select({ startedAt: s.agentRuns.startedAt, heartbeatAt: s.agentRuns.heartbeatAt }).from(s.agentRuns).where(eq(s.agentRuns.id, r.id));
+      const lastActivity = Math.max(last?.at.getTime() ?? 0, run?.startedAt.getTime() ?? 0, run?.heartbeatAt?.getTime() ?? 0);
       if (lastActivity < cutoff) quiet.push(r);
     }
     orphans = quiet;

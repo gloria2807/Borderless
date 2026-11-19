@@ -17,9 +17,10 @@ function ensureDirectory(url: string) {
   mkdirSync(path.dirname(path.resolve(file)), { recursive: true });
 }
 
-export function createDatabase(url: string): Holder {
+export function createDatabase(url: string, authToken?: string): Holder {
   ensureDirectory(url);
-  const client = createClient({ url });
+  // A hosted libSQL database (Turso) needs a token; a local file does not.
+  const client = createClient(authToken && !url.startsWith("file:") ? { url, authToken } : { url });
   return { client, db: drizzle(client, { schema }), url };
 }
 
@@ -29,7 +30,7 @@ export function db(): Database {
   if (current?.pinned) return current.db;
   const url = env().DATABASE_URL;
   if (!globalForDb.__borderlessDb || globalForDb.__borderlessDb.url !== url) {
-    globalForDb.__borderlessDb = createDatabase(url);
+    globalForDb.__borderlessDb = createDatabase(url, env().DATABASE_AUTH_TOKEN);
     // WAL + FK enforcement. Fire-and-forget is fine: libsql serialises statements on one connection.
     void globalForDb.__borderlessDb.client.execute("PRAGMA foreign_keys = ON");
     if (url.startsWith("file:") && !url.includes(":memory:")) {

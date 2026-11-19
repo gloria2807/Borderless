@@ -7,8 +7,13 @@ import { agentRuns } from "@/server/db/schema";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const maxDuration = 300;
 
 const HEARTBEAT_MS = 15_000;
+/** How often the stream also reads new events from the database (for runs executing on another server instance). */
+const POLL_MS = 1_000;
+/** End the stream before the host's time limit; the browser reconnects with Last-Event-ID and loses nothing. */
+const STREAM_LIFETIME_MS = 270_000;
 
 /**
  * Server-Sent Events for one agent run.
@@ -17,6 +22,9 @@ const HEARTBEAT_MS = 15_000;
  * connect, the stream replays the persisted log after `Last-Event-ID` (or `?after=`),
  * then forwards live events, so a refresh or reconnect never loses or duplicates one.
  * The stream ends with an `end` event once the run is no longer running.
+ *
+ * Live events arrive instantly when the run executes in this process, and through a
+ * one-second database poll when it executes elsewhere (serverless hosts such as Vercel).
  */
 export async function GET(request: Request, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;
@@ -80,8 +88,30 @@ export async function GET(request: Request, ctx: { params: Promise<{ id: string 
       runBus.on(`run:${id}`, onEvent);
       runBus.once(`run:${id}:end`, onEnd);
       const heartbeat = setInterval(() => write(`: keep-alive\n\n`), HEARTBEAT_MS);
+      let polling = false;
+      const poll = setInterval(() => {
+        if (polling || closed || replaying) return;
+        polling = true;
+        void (async () => {
+          try {
+            for (const row of await listRunEvents(database, id, lastSeq)) sendEvent(row);
+            const [r] = await database.select({ status: agentRuns.status }).from(agentRuns).where(eq(agentRuns.id, id));
+            if (r?.status !== "running") {
+              for (const row of await listRunEvents(database, id, lastSeq)) sendEvent(row);
+              await sendEnd();
+            }
+          } catch {
+            /* transient database error: try again on the next tick */
+          } finally {
+            polling = false;
+          }
+        })();
+      }, POLL_MS);
+      const lifetime = setTimeout(close, STREAM_LIFETIME_MS);
       cleanup = () => {
         clearInterval(heartbeat);
+        clearInterval(poll);
+        clearTimeout(lifetime);
         runBus.off(`run:${id}`, onEvent);
         runBus.off(`run:${id}:end`, onEnd);
       };

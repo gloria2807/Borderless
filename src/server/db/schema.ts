@@ -471,6 +471,8 @@ export const agentRuns = sqliteTable(
     simTime: integer("sim_time", { mode: "timestamp_ms" }).notNull(),
     startedAt: integer("started_at", { mode: "timestamp_ms" }).notNull(),
     endedAt: integer("ended_at", { mode: "timestamp_ms" }),
+    /** Updated every few seconds while a worker is executing the run (any server instance). */
+    heartbeatAt: integer("heartbeat_at", { mode: "timestamp_ms" }),
   },
   (t) => [index("runs_household_idx").on(t.householdId, t.startedAt)],
 );

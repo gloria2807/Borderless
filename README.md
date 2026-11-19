@@ -229,6 +229,7 @@ APP_BASE_URL=http://localhost:3000 pnpm agent:run --mode deterministic   # a ful
 - [The agent](#the-agent)
 - [Procurement: provider network and paid information](#procurement-provider-network-and-paid-information)
 - [How a purchase works](#how-a-purchase-works) (protocol detail)
+- [Deploy on Vercel](#deploy-on-vercel)
 - [Spending policy](#spending-policy) · [Approvals](#approvals) · [Funding guard](#funding-guard-on-chain-allowance)
 - [How Borderless decides](#how-borderless-decides)
 - [Architecture](#architecture) · [Commands](#commands) · [Testing](#testing) · [Configuration](#configuration)
@@ -236,6 +237,42 @@ APP_BASE_URL=http://localhost:3000 pnpm agent:run --mode deterministic   # a ful
 - [Why Borderless cannot exist without x402](#why-borderless-cannot-exist-without-x402)
 - [x402 and MPP](#x402-and-mpp) · [Procurement acceptance criteria](#procurement-acceptance-criteria)
 - [Known limitations](#known-limitations) · [Troubleshooting](#troubleshooting) · [Team](#team)
+
+---
+
+## Deploy on Vercel
+
+Borderless runs on Vercel's serverless functions. Vercel has no lasting disk, so the database is a hosted **libSQL** database (Turso, free tier), which speaks SQLite. Agent runs keep working after the request that starts them (`after()`), record a heartbeat so any instance can tell a live run from a dead one, and the live console reads new events from the database.
+
+1. **Create the database** with the [Turso CLI](https://docs.turso.tech/cli/installation):
+   ```bash
+   turso db create borderless
+   turso db show borderless --url        # libsql://borderless-<org>.turso.io
+   turso db tokens create borderless     # the auth token
+   ```
+2. **Load the demo household into it** from your machine. Set `DATABASE_URL` and `DATABASE_AUTH_TOKEN` in `.env.local`, run `pnpm wallets:setup` if you haven't, then:
+   ```bash
+   pnpm db:reset
+   ```
+3. **Import the repository** at vercel.com → *Add New → Project*. Vercel detects Next.js and pnpm.
+4. **Add environment variables** (Production) from your `.env.local`:
+   - `DATABASE_URL`, `DATABASE_AUTH_TOKEN`
+   - `STELLAR_NETWORK`, `X402_FACILITATOR_URL`, `DEMO_NGN_PER_TESTNET_USDC`
+   - `AGENT_STELLAR_SECRET`, `AGENT_STELLAR_PUBLIC`
+   - `TREASURY_STELLAR_SECRET`, `TREASURY_STELLAR_PUBLIC`
+   - `DEMO_EMPTY_WALLET_SECRET`, `DEMO_EMPTY_WALLET_PUBLIC`
+   - all eight `PROVIDER_*_PAYTO` values
+   - optionally `GEMINI_API_KEY`
+
+   The `PROVIDER_*_SECRET` values are not needed. Secrets stay in Vercel's encrypted settings and server code; they never reach the browser.
+5. **Deploy.** On production, `APP_BASE_URL` defaults to the production domain, so the agent reaches the provider endpoints there. Set it yourself only for a custom domain.
+6. **Check:** open `/overview`, press **Reset demo**, then **Simulate low balance**, and watch the run reach *Utility released*.
+
+**Good to know:**
+- Agent runs may take up to 5 minutes (`maxDuration = 300`); make sure the project's function duration limit allows it.
+- Preview deployments sit behind Vercel's login, so the agent can't call their provider endpoints. Use the production deployment for the demo.
+- There is no login: anyone with the link can trigger testnet payments from the agent wallet. It's test USDC, but top it up with `pnpm wallets:recycle` or the Circle faucet if it runs low.
+- After pulling a version with new migrations, run `pnpm db:migrate` against the hosted database, or press **Reset demo**.
 
 ---
 
@@ -565,8 +602,9 @@ All configuration is server-side and validated at startup ([`env.ts`](src/server
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `DATABASE_URL` | `file:./data/borderless.db` | SQLite database |
-| `APP_BASE_URL` | `http://localhost:$PORT` | Where the agent reaches provider endpoints |
+| `DATABASE_URL` | `file:./data/borderless.db` | SQLite file locally, or a hosted libSQL URL (`libsql://…turso.io`) on Vercel |
+| `DATABASE_AUTH_TOKEN` | — | Token for the hosted database (server-only) |
+| `APP_BASE_URL` | `http://localhost:$PORT`; on Vercel production, the production domain | Where the agent reaches provider endpoints |
 | `STELLAR_NETWORK` | `stellar:testnet` | **Only** testnet is accepted |
 | `STELLAR_RPC_URL`, `STELLAR_HORIZON_URL`, `SOROBAN_RPC_URL` | Public testnet endpoints | RPC and Horizon |
 | `X402_FACILITATOR_URL` / `X402_FACILITATOR_API_KEY` | `https://x402.org/facilitator` / — | x402 facilitator |
@@ -654,7 +692,7 @@ How each criterion of the procurement amendment is met, and where it is proven.
 - **Gemini free tier.** The configured key allows 20 model requests per day per model, about one full AI run. The AI's live procurement run on the stuck-heater scenario (discover → buy the ₦300 diagnostic → quote ₦1,500 of minimal relief) was cut short by this quota before it paid for the electricity; the deterministic planner completes the same flow, live.
 - **Live AI runs use model credit.** Without a working key the AI planner stops safely (for example `model_no_credits`); the deterministic planner runs the same tools, rules and payments. AI behaviour is also proven with a scripted model in tests. Model availability varies: if Google reports high demand for a model, set `GEMINI_MODEL` to another one your key lists.
 - **Single household, no authentication.**
-- **Per-process concurrency guard** (plus database unique constraints); multi-instance deployment needs a database-level lock.
+- **Concurrency across server instances.** One run per household is enforced through the database (a heartbeat shows which runs are alive), and settlements are unique per transaction hash. Two runs started at the same instant on different instances could still both begin; nothing is paid twice, because of the database's unique constraints.
 - **Funding guard keys.** The treasury key is server-side for the demo. Allowance expiry is shown as an estimate from the ledger gap.
 - **Conservative unknown-outcome reconciliation**: concludes "not charged" only after the payment authorisation expires; it does not search the chain for unrecorded transactions.
 - **Facilitator dependency.** If the public facilitator is down, purchases fail safely; point `X402_FACILITATOR_URL` at a self-hosted one.

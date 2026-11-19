@@ -13,8 +13,8 @@ import { eq } from "drizzle-orm";
 import type { ChatCompletion } from "openai/resources/chat/completions";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { POST as purchaseAction } from "@/app/api/purchases/[id]/[action]/route";
-import { startAgentRun } from "@/server/agent/runtime/executor";
-import { createRun, listRunEvents } from "@/server/agent/runtime/run-log";
+import { AgentRunConflictError, startAgentRun } from "@/server/agent/runtime/executor";
+import { appendRunEvent, createRun, listRunEvents } from "@/server/agent/runtime/run-log";
 import type { ChatClient } from "@/server/agent/runtime/planner-openai";
 import { resetEnvCache } from "@/server/config/env";
 import type { Database } from "@/server/db/client";
@@ -272,9 +272,32 @@ describe("prompt injection through provider data", () => {
 });
 
 describe("restart during a run", () => {
+  it("a run alive on another server instance blocks a new run; once silent, it is closed", async () => {
+    // Another instance's run: in the database with a recent heartbeat, but not in this process.
+    const other = await createRun(database, { householdId: DEMO_HOUSEHOLD_ID, mode: "deterministic", model: null, task: "t", trigger: "manual", simTime: new Date() });
+    await expect(startAgentRun(database, { householdId: DEMO_HOUSEHOLD_ID, mode: "deterministic" })).rejects.toBeInstanceOf(AgentRunConflictError);
+    // That instance dies: no heartbeat or event since.
+    const old = new Date(Date.now() - 60_000);
+    await database.update(s.agentRuns).set({ startedAt: old, heartbeatAt: old }).where(eq(s.agentRuns.id, other));
+    await database.update(s.agentRunEvents).set({ at: old }).where(eq(s.agentRunEvents.runId, other));
+    const { runId, done } = await startAgentRun(database, { householdId: DEMO_HOUSEHOLD_ID, mode: "deterministic" });
+    await done;
+    const [closed] = await database.select().from(s.agentRuns).where(eq(s.agentRuns.id, other));
+    expect(closed?.status).toBe("interrupted");
+    expect(runId).not.toBe(other);
+  });
+
+  it("events appended by two writers to one run get consecutive sequence numbers", async () => {
+    const runId = await createRun(database, { householdId: DEMO_HOUSEHOLD_ID, mode: "ai", model: "m", task: "t", trigger: "manual", simTime: new Date() });
+    await Promise.all(Array.from({ length: 6 }, (_, i) => appendRunEvent(database, runId, { stage: "planning", type: `test.${i}` })));
+    const seqs = (await listRunEvents(database, runId)).map((e) => e.seq);
+    expect(seqs).toEqual([1, 2, 3, 4, 5, 6]);
+  });
+
   it("a run left running by a dead process is closed as interrupted when the runs list is read", async () => {
     const runId = await createRun(database, { householdId: DEMO_HOUSEHOLD_ID, mode: "ai", model: "m", task: "t", trigger: "manual", simTime: new Date() });
-    await database.update(s.agentRuns).set({ startedAt: new Date(Date.now() - 60_000) }).where(eq(s.agentRuns.id, runId));
+    // A dead process leaves an old start time and an old heartbeat behind.
+    await database.update(s.agentRuns).set({ startedAt: new Date(Date.now() - 60_000), heartbeatAt: new Date(Date.now() - 60_000) }).where(eq(s.agentRuns.id, runId));
     const fresh = await createRun(database, { householdId: DEMO_HOUSEHOLD_ID, mode: "ai", model: "m", task: "t", trigger: "manual", simTime: new Date() });
     const runs = await getRecentRuns(DEMO_HOUSEHOLD_ID);
     expect(runs.find((r) => r.id === runId)?.status).toBe("interrupted");

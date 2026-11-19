@@ -6,6 +6,8 @@ import { db } from "@/server/db/client";
 import { agentRuns } from "@/server/db/schema";
 
 export const runtime = "nodejs";
+// Starts an agent run that keeps working after the response (see keepAlive); this is its time budget.
+export const maxDuration = 300;
 export const dynamic = "force-dynamic";
 
 const schema = z.object({

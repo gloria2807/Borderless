@@ -8,6 +8,8 @@ const nextConfig: NextConfig = {
   distDir: process.env.NEXT_DIST_DIR ?? ".next",
   // Pin the workspace root (a stray lockfile in the user's home directory confuses detection).
   turbopack: { root: import.meta.dirname },
+  // Reset demo applies migrations at runtime: ship the SQL files with that function on serverless hosts.
+  outputFileTracingIncludes: { "/api/demo/reset": ["./drizzle/**/*"] },
 };
 
 export default nextConfig;

@@ -64,6 +64,13 @@
       "when": 1794597165330,
       "tag": "0008_owner_controls_eligibility",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1795079184590,
+      "tag": "0009_run_heartbeat",
+      "breakpoints": true
     }
   ]
 }

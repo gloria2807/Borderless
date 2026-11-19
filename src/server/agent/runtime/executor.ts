@@ -2,6 +2,10 @@
  * Agent run executor: one run per household at a time, executed in the background so
  * the HTTP request that starts it returns immediately with a run ID. Everything the
  * run does is persisted to the run log as it happens.
+ *
+ * Works on one long-lived server and on serverless hosts (Vercel): the background work is
+ * kept alive with keepAlive(), a heartbeat in the database shows any instance that the run
+ * is alive, and "one run at a time" is checked against the database, not just this process.
  */
 import OpenAI from "openai";
 import { aiProvider, env } from "../../config/env";
@@ -12,7 +16,10 @@ import type { BuyerOptions } from "../../payments/x402-buyer";
 import type { WalletBalanceReader } from "../../payments/wallet";
 import { runDeterministicPlanner } from "./planner-deterministic";
 import { runAiPlanner, type ChatClient, type PlannerOutcome } from "./planner-openai";
-import { appendRunEvent, createRun, finishRun, markOrphanedRunsInterrupted } from "./run-log";
+import { and, eq, inArray } from "drizzle-orm";
+import * as s from "../../db/schema";
+import { keepAlive } from "../../runtime/keep-alive";
+import { appendRunEvent, createRun, finishRun, markOrphanedRunsInterrupted, touchRunHeartbeat } from "./run-log";
 import { AgentPausedError, agentPaused } from "../run";
 import type { ToolContext } from "./tools";
 
@@ -64,8 +71,10 @@ export function activeRunFor(householdId: string): string | null {
  * crash: close it as interrupted (its purchases are reconciled by the purchase sweep).
  * Safe to call from read paths; it never touches a run that is genuinely in progress.
  */
-/** Silence after which a run no process owns is treated as cut off. */
-export const ORPHAN_QUIET_MS = 15_000;
+/** Silence (no event, no heartbeat) after which a run no process owns is treated as cut off. */
+export const ORPHAN_QUIET_MS = 20_000;
+/** How often a running run records that it is alive. */
+export const HEARTBEAT_MS = 5_000;
 
 export async function reconcileOrphanedRuns(db: Database, householdId: string): Promise<number> {
   return markOrphanedRunsInterrupted(db, householdId, new Set(active.values()), { quietForMs: ORPHAN_QUIET_MS });
@@ -85,8 +94,15 @@ export async function startAgentRun(db: Database, opts: StartRunOptions): Promis
   }
   const model = mode === "ai" ? (opts.client ? (aiProvider()?.model ?? "scripted") : aiProvider()!.model) : null;
 
-  // Reconcile anything a previous process left behind before starting fresh.
-  await markOrphanedRunsInterrupted(db, opts.householdId, new Set(active.values()));
+  // Reconcile anything a previous process left behind before starting fresh. A run that is
+  // still alive (recent heartbeat) on another server instance blocks this one.
+  await reconcileOrphanedRuns(db, opts.householdId);
+  const [alive] = await db
+    .select({ id: s.agentRuns.id })
+    .from(s.agentRuns)
+    .where(and(eq(s.agentRuns.householdId, opts.householdId), inArray(s.agentRuns.status, ["running"])))
+    .limit(1);
+  if (alive) throw new AgentRunConflictError(alive.id);
   await sweepInterruptedPurchases(db, opts.householdId);
 
   const state = await loadHousehold(db, opts.householdId);
@@ -122,6 +138,7 @@ export async function startAgentRun(db: Database, opts: StartRunOptions): Promis
 
   const done = (async (): Promise<PlannerOutcome> => {
     let outcome: PlannerOutcome;
+    const heartbeat = setInterval(() => void touchRunHeartbeat(db, runId).catch(() => undefined), HEARTBEAT_MS);
     try {
       outcome =
         mode === "ai"
@@ -138,6 +155,8 @@ export async function startAgentRun(db: Database, opts: StartRunOptions): Promis
       const message = err instanceof Error ? err.message : String(err);
       await appendRunEvent(db, runId, { stage: "planning", type: "run.error", error: "internal_error", reason: message });
       outcome = { status: "failed", summary: "Stopped by an internal error. Purchases already made stay recorded.", steps: 0, usage: { prompt_tokens: 0, completion_tokens: 0 }, error: message };
+    } finally {
+      clearInterval(heartbeat);
     }
     await appendRunEvent(db, runId, {
       stage: "finished",
@@ -150,6 +169,8 @@ export async function startAgentRun(db: Database, opts: StartRunOptions): Promis
     active.delete(opts.householdId);
     return outcome;
   })();
+  // Serverless hosts freeze a function once it has responded: keep the run going until it ends.
+  keepAlive(done);
 
   return { runId, done };
 }

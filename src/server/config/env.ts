@@ -11,6 +11,8 @@ const STELLAR_SECRET_KEY = /^S[A-Z2-7]{55}$/;
 
 const baseSchema = z.object({
   DATABASE_URL: z.string().default("file:./data/borderless.db"),
+  /** Auth token for a hosted libSQL database (Turso), e.g. DATABASE_URL=libsql://<db>.turso.io. Server-only. */
+  DATABASE_AUTH_TOKEN: z.string().min(1).optional(),
   /**
    * Where the agent reaches the provider endpoints. Defaults to this server's own port
    * (Next.js sets PORT), so the agent never talks to some other local app on :3000.
@@ -18,7 +20,7 @@ const baseSchema = z.object({
   APP_BASE_URL: z
     .string()
     .url()
-    .default(() => `http://localhost:${process.env.PORT ?? "3000"}`),
+    .default(() => defaultAppBaseUrl()),
   // Borderless is testnet-only by design. Mainnet is rejected, not merely discouraged.
   STELLAR_NETWORK: z.literal("stellar:testnet").default("stellar:testnet"),
   STELLAR_RPC_URL: z.string().url().default("https://soroban-testnet.stellar.org"),
@@ -55,6 +57,18 @@ const baseSchema = z.object({
   AGENT_RUN_TIMEOUT_SECONDS: z.coerce.number().int().min(30).max(1800).default(300),
   AGENT_MODEL_TIMEOUT_SECONDS: z.coerce.number().int().min(5).max(300).default(60),
 });
+
+/**
+ * The agent calls the provider endpoints over HTTP, so it needs this app's own address.
+ * Locally that is this server's port. On Vercel production it is the production domain
+ * (preview deployment URLs sit behind Vercel's login, so the agent could not reach them).
+ */
+function defaultAppBaseUrl(): string {
+  const production = process.env.VERCEL_ENV === "production" ? process.env.VERCEL_PROJECT_PRODUCTION_URL : undefined;
+  const host = production ?? process.env.VERCEL_URL;
+  if (host) return `https://${host}`;
+  return `http://localhost:${process.env.PORT ?? "3000"}`;
+}
 
 export type ServerEnv = z.infer<typeof baseSchema>;
 
