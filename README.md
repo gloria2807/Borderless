@@ -17,7 +17,7 @@
 
 ## For judges: the short version
 
-**The problem.** In many households, electricity units, airtime and mobile data all run out on their own schedules, and all come out of one budget. When the lights go off and the data is low at the same time, someone has to decide what to pay for first. Ordinary auto-pay follows instructions; it can't weigh competing needs.
+**The problem.** In many Nigerian households, electricity units, airtime and mobile data all run out on their own schedules, and all come out of one budget. When the lights go off and the data is low at the same time, someone has to decide what to pay for first. Ordinary auto-pay follows instructions; it can't weigh competing needs.
 
 **What Borderless does.** It watches the household's meter and phone lines, forecasts when each will run out, discovers eligible providers, compares their offers, decides what matters most within the owner's budget, and **pays the provider itself through x402 on Stellar**. Then it verifies what was delivered and explains why.
 
