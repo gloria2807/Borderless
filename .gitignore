@@ -24,6 +24,5 @@ keys/
 .DS_Store
 Thumbs.db
 
-# demo video working files (large)
-video/footage/
-video/out/
+# demo video production (recordings, renders, audio and tooling stay local)
+video/

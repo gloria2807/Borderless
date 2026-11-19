@@ -30,6 +30,7 @@
 | **Where and how is Stellar x402 integrated?** | [1 · Where x402 lives in the code](#1--where-and-how-stellar-x402-is-integrated) |
 | **How does the payment flow work?** | [2 · The payment flow, step by step](#2--how-the-payment-flow-works) |
 | **How does the integration support the core functionality?** | [3 · Why the product depends on x402](#3--how-the-integration-supports-the-core-functionality) |
+| **Why can't Borderless exist without x402?** | [Why Borderless cannot exist without x402](#why-borderless-cannot-exist-without-x402) |
 | **Can I try it myself?** | [Try it yourself (about 10 minutes)](#try-it-yourself-about-10-minutes) |
 
 **Proof from a real run** (Scenario A, recorded for the demo video): the agent paid **2.0000000 test USDC** to the electricity provider's registered wallet in transaction [`46846b41…2c73`](https://stellar.expert/explorer/testnet/tx/46846b41a6735355b153f0213a84d3e86655cb355f0a40376ca25672da232c73) (ledger 5,780,559), and only then did the provider credit the meter.
@@ -140,6 +141,23 @@ Borderless's core job is to **keep a household powered and connected while decid
 
 ---
 
+## Why Borderless cannot exist without x402
+
+Take x402 out and Borderless stops being an agent. It becomes a dashboard that forecasts when the lights will go off and sends you a reminder. Everything that makes it autonomous depends on the payment being part of the HTTP request:
+
+| Without x402 | With x402 on Stellar |
+| --- | --- |
+| **An agent can't get through human checkout.** Card forms, one-time codes, CAPTCHAs, vendor accounts and saved cards are built to stop software from paying. | **Payment is part of HTTP.** The provider answers `402` with machine-readable terms and the agent answers with a signed payment. There's no account, card or human in the loop, at 2 a.m. as easily as at noon. |
+| **Every vendor would need an integration.** Each one means a contract, an API key and billing, set up in advance. The agent could only use providers someone had already onboarded. | **Any provider that speaks x402 can be paid.** Borderless discovers providers at runtime, reads their published service document, and pays the one that serves this meter best. The protocol is the integration. |
+| **Small purchases don't make sense.** Paying ₦300 (0.30 USDC) for a meter diagnostic before deciding what electricity to buy is impossible when card fees and minimums cost more than the information. | **Per-request micropayments are normal.** Stellar settles in seconds for a fraction of a cent (sponsored by the facilitator on testnet), so buying *information* before buying *power* is a rational choice the agent can make. |
+| **The provider has to trust the buyer, or the buyer has to prepay.** Either way, someone carries credit risk, and the agent would need a balance held by each vendor. | **The provider releases only after settlement.** Verify, settle on Stellar, then release: the resource and the payment move together, so neither side needs to trust the other ([`purchase-handler.ts`](src/server/providers/purchase-handler.ts#L141-L230)). |
+| **There's no clean moment for the owner's rules.** With a checkout flow, the price and payee arrive as a web page; there's nothing exact for code to check before money moves. | **The 402 is an exact, checkable offer.** Scheme, asset, network, payee and amount arrive *before* anything is signed, so the policy engine can compare them with the quote and the owner's limits and refuse in code ([`x402-buyer.ts`](src/server/payments/x402-buyer.ts#L255-L410)). |
+| **"It paid" is the vendor's word.** A card statement or a vendor's email is the only record. | **Every purchase is independently verifiable.** Each one is its own Stellar transaction, confirmed by Borderless on Horizon and checkable by anyone on Stellar Expert. |
+
+In short: **the household's needs are continuous, the providers are many and change, and the amounts are small.** Only a payment that travels with the request, settles in seconds and can be checked before signing lets an agent act on its own while the owner stays in control. That is what x402 on Stellar provides, and why Borderless is built around it rather than adding it afterwards.
+
+---
+
 ## Try it yourself (about 10 minutes)
 
 Everything runs locally against **Stellar testnet**. You never need real money, a personal wallet or an API key; the setup script creates and funds its own testnet wallets.
@@ -215,6 +233,7 @@ APP_BASE_URL=http://localhost:3000 pnpm agent:run --mode deterministic   # a ful
 - [How Borderless decides](#how-borderless-decides)
 - [Architecture](#architecture) · [Commands](#commands) · [Testing](#testing) · [Configuration](#configuration)
 - [Security notes](#security-notes) · [Failure handling](#failure-handling)
+- [Why Borderless cannot exist without x402](#why-borderless-cannot-exist-without-x402)
 - [x402 and MPP](#x402-and-mpp) · [Procurement acceptance criteria](#procurement-acceptance-criteria)
 - [Known limitations](#known-limitations) · [Troubleshooting](#troubleshooting) · [Team](#team)
 
