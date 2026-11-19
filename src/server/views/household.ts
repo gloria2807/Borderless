@@ -48,6 +48,8 @@ export interface UtilityView {
   identifier: string;
   network: string | null;
   providerName: string;
+  /** Electricity: the distribution company serving the meter. */
+  distributionCompany: string | null;
   providerAvailable: boolean;
   balance: number;
   unit: "kWh" | "NGN" | "MB";
@@ -116,6 +118,7 @@ export async function getUtilities(householdId: string, simNow: Date): Promise<U
       accountId: account.id,
       label: account.label,
       identifier: account.identifier,
+      distributionCompany: account.distributionCompany,
       network: account.network,
       providerName: provider.name,
       providerAvailable: provider.available,

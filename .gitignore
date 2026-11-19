@@ -23,3 +23,7 @@ keys/
 
 .DS_Store
 Thumbs.db
+
+# demo video working files (large)
+video/footage/
+video/out/

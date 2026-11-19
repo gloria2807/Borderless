@@ -16,7 +16,7 @@ export function VirtualMeter({ u, simNow }: { u: UtilityView; simNow: string }) 
       <div className="flex items-center justify-between">
         <div>
           <p className="text-[13px] font-semibold">Prepaid meter</p>
-          <p className="text-2xs text-fg-3">{u.providerName}</p>
+          <p className="text-2xs text-fg-3">{u.distributionCompany ? `Served by ${u.distributionCompany}` : u.providerName}</p>
         </div>
         <SimulatedTag>Simulated device</SimulatedTag>
       </div>

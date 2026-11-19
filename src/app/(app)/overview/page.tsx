@@ -16,6 +16,7 @@ import { DEMO_HOUSEHOLD } from "@/server/api";
 import { db } from "@/server/db/client";
 import { accountFor, spendingAuthority } from "@/server/views/authority";
 import { getEvents, getHouseholdOverview } from "@/server/views/household";
+import { getRecentRuns } from "@/server/views/runs";
 
 export const dynamic = "force-dynamic";
 
@@ -36,12 +37,15 @@ const usdc = (ngn: number, rate: number) => `${(ngn / rate).toFixed(2)}`;
 
 export default async function OverviewPage() {
   const database = db();
-  const [o, events, authority, meter] = await Promise.all([
+  const [o, events, authority, meter, [lastRun]] = await Promise.all([
     getHouseholdOverview(DEMO_HOUSEHOLD),
     getEvents(DEMO_HOUSEHOLD, { limit: 14 }),
     spendingAuthority(database, DEMO_HOUSEHOLD),
     accountFor(database, DEMO_HOUSEHOLD, "electricity"),
+    getRecentRuns(DEMO_HOUSEHOLD, 1),
   ]);
+  // Show whichever is newer: a one-shot assessment or an agent run.
+  const runIsNewer = lastRun?.summary && lastRun.status !== "running" && (!o.latestDecision || new Date(lastRun.startedAt) > new Date(o.latestDecision.createdAt ?? 0));
   const runId = activeRunFor(DEMO_HOUSEHOLD);
   const status = statusLine(o);
   const electricity = o.utilities.find((u) => u.kind === "electricity");
@@ -83,7 +87,14 @@ export default async function OverviewPage() {
             {status.text}
           </h1>
           <p className="mt-2 max-w-3xl text-[13px] text-fg-2">
-            {o.latestDecision ? (
+            {runIsNewer ? (
+              <>
+                <span className="text-fg-3">Latest run:</span> {lastRun!.summary!.split(/(?<=\.)\s/)[0]}{" "}
+                <Link href={`/agent/runs/${lastRun!.id}`} className="font-medium text-fg underline decoration-fg/20 underline-offset-4 hover:decoration-fg/60">
+                  See the run
+                </Link>
+              </>
+            ) : o.latestDecision ? (
               <>
                 <span className="text-fg-3">Latest decision:</span> {o.latestDecision.headline}.{" "}
                 <Link href="/agent" className="font-medium text-fg underline decoration-fg/20 underline-offset-4 hover:decoration-fg/60">

@@ -127,7 +127,7 @@ export async function runDeterministicPlanner(ctx: ToolContext): Promise<Planner
   }
 
   if (decision.selected.length) await call("reassess_household", {});
-  const summary = (outcomes.length ? `Outcome: ${outcomes.join(" ")} ` : "") + explanation.headline + ". " + explanation.reasoning.slice(0, 900);
+  const summary = (outcomes.length ? `Outcome: ${outcomes.join(" ")} ` : "") + explanation.headline + ". " + clipAtSentence(explanation.reasoning, 900);
   await call("finish", { summary, monitoring_next: bought ? "Re-assess after the next simulated usage period." : "Re-assess after the next simulated usage period, or when the owner changes the rules." });
   return { status: "completed", summary: ctx.finished?.summary ?? explanation.headline, steps, usage: { prompt_tokens: 0, completion_tokens: 0 } };
 }
@@ -166,4 +166,12 @@ async function runDirective(ctx: ToolContext, call: (name: string, args: unknown
   }
   await call("finish", { summary: outcome, monitoring_next: "Back to normal monitoring." });
   return { status: "completed", summary: ctx.finished?.summary ?? outcome, steps: steps(), usage: { prompt_tokens: 0, completion_tokens: 0 } };
+}
+
+/** Shorten to at most `max` characters, ending at a full sentence. */
+function clipAtSentence(text: string, max: number): string {
+  if (text.length <= max) return text;
+  const cut = text.slice(0, max);
+  const end = cut.lastIndexOf(". ");
+  return end > 0 ? cut.slice(0, end + 1) : cut.replace(/\s+\S*$/, "") + "…";
 }

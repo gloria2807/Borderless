@@ -91,7 +91,7 @@ export function ApprovalPrompt({ p, ngnPerUsdc, budgetLeftNgn, autoLimitNgn }: {
           </p>
           <p className="mt-0.5 text-[12.5px] text-fg-2">
             {p.reason ? <>Why: {p.reason} </> : null}
-            {autoLimitNgn !== undefined ? `It's above your ${usdc(autoLimitNgn)} automatic limit, so nothing is paid unless you approve these exact terms.` : "It's above your approval threshold, so nothing is paid unless you approve these exact terms."}
+            {p.reason ? "Nothing is paid unless you approve these exact terms." : autoLimitNgn !== undefined ? `It's above your ${usdc(autoLimitNgn)} automatic limit, so nothing is paid unless you approve these exact terms.` : "It's above your approval threshold, so nothing is paid unless you approve these exact terms."}
           </p>
           <dl className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-[11.5px]">
             {budgetLeftNgn !== undefined && (

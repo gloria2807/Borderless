@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useId, useRef, useState } from "react";
+import { usePathname } from "next/navigation";
 import { FastForward, Gauge, Play, RotateCcw, Square, TriangleAlert, X } from "lucide-react";
 import { Button, cn } from "@/components/ui/primitives";
 import { ConfirmButton, Toggle, useApiAction } from "@/components/ui/interactive";
@@ -30,6 +31,11 @@ const SPEEDS = [0.5, 1, 2, 3, 5];
  */
 export function DemoControls({ utilities, providers, faults, scenario, agent, compact }: Props) {
   const ref = useRef<HTMLDialogElement>(null);
+  // Live-demo actions navigate to the run page: close the panel so the run is visible.
+  const pathname = usePathname();
+  useEffect(() => {
+    ref.current?.close();
+  }, [pathname]);
   const { run, pending } = useApiAction();
   const [live, setLive] = useState(false);
   const [picked, setPicked] = useState(scenario.active);

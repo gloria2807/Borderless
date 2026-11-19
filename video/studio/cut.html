@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Borderless — demo video studio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=block" rel="stylesheet">
+<style>
+  /* Borderless design system (src/app/globals.css), for video. */
+  :root {
+    --bg: #f4f3ee; --bg2: #eeece5; --surface: #fbfaf7; --raised: #ffffff;
+    --ink: #0c0d0c; --ink2: #1c1e1b; --fg2: #4a4e49; --fg3: #5f635c; --fg4: #a3a69e;
+    --line: rgba(12,13,12,.11); --line-soft: rgba(12,13,12,.06);
+    --green: #0a7a4b; --green-soft: #dcf0e4; --green-bright: #8fd8b0;
+    --amber: #8f5b00; --amber-soft: #f8ebcf; --amber-bright: #f3c77a;
+    --coral: #b8392a; --coral-soft: #f9e1db; --cyan: #0a6577; --cyan-soft: #dcf0f3;
+    --ring: 0 0 0 1px rgba(12,13,12,.08), 0 1px 2px rgba(12,13,12,.05);
+    --sans: "Manrope", system-ui, sans-serif; --mono: "IBM Plex Mono", ui-monospace, monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 1920px; height: 1080px; overflow: hidden; background: var(--bg); }
+  body { font-family: var(--sans); color: var(--ink); -webkit-font-smoothing: antialiased; }
+  #stage { position: absolute; inset: 0; overflow: hidden; }
+  .scene { position: absolute; inset: 0; display: none; }
+  .light { background: var(--bg); }
+  .grid { background-image: linear-gradient(to right, rgba(12,13,12,.035) 1px, transparent 1px), linear-gradient(to bottom, rgba(12,13,12,.035) 1px, transparent 1px); background-size: 60px 60px; }
+  .dark { background: var(--ink); color: #fff; }
+  .abs { position: absolute; }
+  .label { font-family: var(--mono); font-size: 15px; letter-spacing: .16em; text-transform: uppercase; }
+  .mono { font-family: var(--mono); }
+
+  /* Browser window (as in the reference), in Borderless styling. */
+  .win { position: absolute; left: 70px; top: 96px; width: 1200px; border-radius: 14px; overflow: hidden; background: var(--surface); box-shadow: 0 0 0 1px rgba(12,13,12,.12), 0 30px 70px -30px rgba(12,13,12,.35); }
+  .win .bar { height: 44px; display: flex; align-items: center; gap: 14px; padding: 0 16px; background: #ecebe5; border-bottom: 1px solid var(--line); }
+  .win .dots { display: flex; gap: 8px; } .win .dots i { width: 12px; height: 12px; border-radius: 50%; display: block; }
+  .win .url { flex: 1; height: 28px; border-radius: 8px; background: #fff; box-shadow: var(--ring); display: flex; align-items: center; gap: 8px; padding: 0 12px; font-family: var(--mono); font-size: 14px; color: var(--fg2); }
+  .win .url b { font-weight: 500; color: var(--ink); }
+  .win .badge { height: 26px; padding: 0 12px; border-radius: 99px; background: var(--ink); color: #fff; font-family: var(--mono); font-size: 12.5px; display: flex; align-items: center; gap: 8px; }
+  .win .badge i { width: 7px; height: 7px; border-radius: 50%; background: #f26b5b; display: block; }
+  .win .view { position: relative; width: 1200px; height: 750px; overflow: hidden; background: var(--bg); }
+  .win .zoom { position: absolute; left: 0; top: 0; width: 1200px; height: 750px; transform-origin: 0 0; }
+  .win .zoom img { width: 1200px; height: 750px; display: block; }
+  .cursor { position: absolute; width: 26px; height: 26px; margin: -3px 0 0 -4px; filter: drop-shadow(0 2px 3px rgba(0,0,0,.35)); }
+  .ripple { position: absolute; width: 44px; height: 44px; margin: -22px 0 0 -22px; border-radius: 50%; border: 3px solid var(--green); }
+  .hl { position: absolute; border-radius: 12px; box-shadow: 0 0 0 3px var(--green), 0 0 0 9px rgba(10,122,75,.18); }
+
+  /* Side panel. */
+  .side { position: absolute; left: 1320px; top: 108px; width: 540px; }
+  .side .eyebrow { color: var(--green); }
+  .side h2 { margin-top: 16px; font-size: 44px; line-height: 1.07; font-weight: 700; letter-spacing: -.035em; }
+  .side h2 em { font-style: normal; color: var(--green); }
+  .side ul { list-style: none; margin-top: 28px; display: flex; flex-direction: column; gap: 14px; }
+  .side li { border-left: 3px solid var(--green); padding: 2px 0 2px 16px; font-size: 22px; line-height: 1.32; color: var(--fg2); }
+  .side li b { color: var(--ink); font-weight: 600; }
+  .side li.amber { border-color: #c98a17; } .side li.coral { border-color: var(--coral); } .side li.cyan { border-color: var(--cyan); } .side li.ink { border-color: var(--ink); }
+  .side li.step { display: flex; gap: 12px; align-items: baseline; border: 0; padding: 0; font-size: 21px; }
+  .side li.step .tick { flex: 0 0 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; transform: translateY(5px); background: rgba(12,13,12,.08); color: transparent; font-size: 14px; font-weight: 800; }
+  .side li.step.done .tick { background: var(--green); color: #fff; }
+  .side li.step.now .tick { background: #fff; box-shadow: 0 0 0 2px var(--cyan); }
+  .side li.step.todo { color: var(--fg4); }
+
+  /* Captions (the reference's subtitle pill). */
+  #cap { position: absolute; left: 0; right: 0; bottom: 34px; display: flex; justify-content: center; pointer-events: none; }
+  #cap span.pill { max-width: 1500px; padding: 10px 22px 12px; border-radius: 10px; background: var(--ink); color: #fff; font-size: 30px; line-height: 1.28; font-weight: 600; letter-spacing: -.01em; text-align: center; }
+  #cap span.pill em { font-style: normal; color: var(--green-bright); }
+  #cap.ondark span.pill { background: var(--bg); color: var(--ink); }
+  #cap.ondark span.pill em { color: var(--green); }
+
+  /* Common cards. */
+  .card { background: var(--surface); border-radius: 18px; box-shadow: 0 0 0 1px rgba(12,13,12,.09), 0 20px 50px -28px rgba(12,13,12,.35); }
+  .chip { display: inline-flex; align-items: center; gap: 8px; height: 34px; padding: 0 14px; border-radius: 99px; font-size: 17px; font-weight: 600; }
+  .proof { position: absolute; right: 690px; top: 600px; width: 520px; padding: 18px 22px; border-radius: 16px; background: var(--ink); color: #fff; box-shadow: 0 24px 60px -20px rgba(0,0,0,.5); }
+  .proof .k { font-family: var(--mono); font-size: 12.5px; letter-spacing: .14em; color: var(--green-bright); text-transform: uppercase; }
+  .proof .h { margin-top: 10px; font-family: var(--mono); font-size: 19px; }
+  .proof .r { margin-top: 8px; font-size: 16px; color: rgba(255,255,255,.75); line-height: 1.45; }
+  .note { position: absolute; font-family: var(--mono); font-size: 14px; color: var(--fg3); }
+
+  /* Architecture. */
+  .layer { position: absolute; top: 300px; width: 268px; height: 330px; padding: 20px 20px 18px; border-radius: 16px; background: var(--surface); box-shadow: 0 0 0 1px rgba(12,13,12,.1), 0 16px 40px -26px rgba(12,13,12,.4); }
+  .layer .n { font-family: var(--mono); font-size: 13px; letter-spacing: .14em; color: var(--fg3); }
+  .layer h3 { margin-top: 10px; font-size: 24px; line-height: 1.12; letter-spacing: -.02em; font-weight: 700; }
+  .layer p { margin-top: 10px; font-size: 16.5px; line-height: 1.38; color: var(--fg2); }
+  .layer .f { position: absolute; left: 20px; right: 20px; bottom: 16px; font-family: var(--mono); font-size: 12px; color: var(--fg3); line-height: 1.4; }
+  .layer.policy { box-shadow: 0 0 0 2px #c98a17, 0 16px 40px -26px rgba(12,13,12,.4); }
+  .layer.lit { box-shadow: 0 0 0 3px var(--green), 0 0 0 10px rgba(10,122,75,.14); }
+  .arrow { position: absolute; top: 465px; height: 2px; background: repeating-linear-gradient(90deg, var(--fg3) 0 7px, transparent 7px 13px); }
+  .arrow::after { content: ""; position: absolute; right: -2px; top: -5px; border: 6px solid transparent; border-left: 9px solid var(--fg3); }
+  .flowtag { position: absolute; font-family: var(--mono); font-size: 13.5px; padding: 5px 10px; border-radius: 8px; background: var(--ink); color: #fff; white-space: nowrap; }
+  .dot { position: absolute; width: 18px; height: 18px; margin: -9px 0 0 -9px; border-radius: 50%; background: var(--green); box-shadow: 0 0 0 6px rgba(10,122,75,.2); }
+  /* Code panels (real excerpts from the repository). */
+  .codecard { position: absolute; top: 300px; width: 590px; height: 560px; border-radius: 16px; background: #0c0d0c; color: #e8ebe4; padding: 22px 24px; box-shadow: 0 24px 60px -28px rgba(12,13,12,.6); }
+  .codecard .ct { font-size: 23px; font-weight: 700; letter-spacing: -.02em; color: #fff; }
+  .codecard .cf { margin-top: 6px; font-family: var(--mono); font-size: 13.5px; color: var(--green-bright); }
+  .codecard .code { margin-top: 18px; font-family: var(--mono); font-size: 15.5px; line-height: 1.58; white-space: pre-wrap; word-break: break-word; color: #e8ebe4; }
+  .codecard .kw { color: var(--green-bright); } .codecard .st, .codecard .nu { color: var(--amber-bright); } .codecard .cm, .codecard div.cm { color: rgba(255,255,255,.46); }
+  .codecard.focus { box-shadow: 0 0 0 3px var(--green), 0 0 0 10px rgba(10,122,75,.22), 0 24px 60px -28px rgba(12,13,12,.6); }
+</style>
+</head>
+<body>
+<div id="stage"></div>
+<div id="cap"><span class="pill"></span></div>
+<script src="engine-cut.js"></script>
+</body>
+</html>

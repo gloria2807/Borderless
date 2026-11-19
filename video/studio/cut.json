@@ -1,0 +1,516 @@
+{
+ "duration": 175.68,
+ "scenes": [
+  {
+   "n": 1,
+   "first": 1.8,
+   "last": 22.409999999999997
+  },
+  {
+   "n": 2,
+   "first": 24.009999999999994,
+   "last": 32.44999999999999
+  },
+  {
+   "n": 3,
+   "first": 33.14999999999999,
+   "last": 46.739999999999995
+  },
+  {
+   "n": 4,
+   "first": 47.44,
+   "last": 74.34999999999998
+  },
+  {
+   "n": 5,
+   "first": 75.44999999999999,
+   "last": 101.36999999999998
+  },
+  {
+   "n": 6,
+   "first": 102.66999999999997,
+   "last": 145.89999999999992
+  },
+  {
+   "n": 7,
+   "first": 146.5999999999999,
+   "last": 157.2399999999999
+  },
+  {
+   "n": 8,
+   "first": 158.2399999999999,
+   "last": 173.27999999999986
+  }
+ ],
+ "clips": {
+  "c1": {
+   "at": 1.8,
+   "end": 4.15,
+   "src": [
+    5.4,
+    7.75
+   ]
+  },
+  "c2": {
+   "at": 4.37,
+   "end": 6.07,
+   "src": [
+    15.55,
+    17.25
+   ]
+  },
+  "c3": {
+   "at": 6.29,
+   "end": 11.69,
+   "src": [
+    18.3,
+    23.7
+   ]
+  },
+  "c4": {
+   "at": 11.91,
+   "end": 22.41,
+   "src": [
+    32.6,
+    43.1
+   ]
+  },
+  "c5": {
+   "at": 24.01,
+   "end": 25.71,
+   "src": [
+    67.75,
+    69.45
+   ]
+  },
+  "c6a": {
+   "at": 25.93,
+   "end": 28.23,
+   "src": [
+    72.95,
+    75.25
+   ]
+  },
+  "c6b": {
+   "at": 28.45,
+   "end": 32.45,
+   "src": [
+    76.85,
+    80.85
+   ]
+  },
+  "c7": {
+   "at": 33.15,
+   "end": 38.9,
+   "src": [
+    84.45,
+    90.2
+   ]
+  },
+  "c8": {
+   "at": 39.12,
+   "end": 43.57,
+   "src": [
+    90.5,
+    94.95
+   ]
+  },
+  "c9": {
+   "at": 43.79,
+   "end": 46.74,
+   "src": [
+    107.45,
+    110.4
+   ]
+  },
+  "c10": {
+   "at": 47.44,
+   "end": 51.34,
+   "src": [
+    112.6,
+    116.5
+   ]
+  },
+  "c11": {
+   "at": 51.56,
+   "end": 60.96,
+   "src": [
+    116.85,
+    126.25
+   ]
+  },
+  "c12": {
+   "at": 61.18,
+   "end": 64.23,
+   "src": [
+    126.8,
+    129.85
+   ]
+  },
+  "c13": {
+   "at": 64.45,
+   "end": 74.35,
+   "src": [
+    133.05,
+    142.95
+   ]
+  },
+  "c15": {
+   "at": 75.45,
+   "end": 84.9,
+   "src": [
+    173.65,
+    183.1
+   ]
+  },
+  "c17": {
+   "at": 85.12,
+   "end": 101.37,
+   "src": [
+    188.85,
+    205.1
+   ]
+  },
+  "c19": {
+   "at": 102.67,
+   "end": 105.21,
+   "src": [
+    222.31,
+    224.85
+   ]
+  },
+  "c20": {
+   "at": 105.43,
+   "end": 112.78,
+   "src": [
+    225.35,
+    232.7
+   ]
+  },
+  "c21": {
+   "at": 113,
+   "end": 114.75,
+   "src": [
+    233.85,
+    235.6
+   ]
+  },
+  "c22": {
+   "at": 114.97,
+   "end": 122.82,
+   "src": [
+    236.45,
+    244.3
+   ]
+  },
+  "c23": {
+   "at": 123.04,
+   "end": 129.86,
+   "src": [
+    245.33,
+    252.15
+   ]
+  },
+  "c24": {
+   "at": 130.08,
+   "end": 138.98,
+   "src": [
+    253,
+    261.9
+   ]
+  },
+  "c25": {
+   "at": 139.2,
+   "end": 145.9,
+   "src": [
+    262.3,
+    269
+   ]
+  },
+  "c26": {
+   "at": 146.6,
+   "end": 150.6,
+   "src": [
+    283.85,
+    287.85
+   ]
+  },
+  "c27": {
+   "at": 150.82,
+   "end": 153.72,
+   "src": [
+    288.25,
+    291.15
+   ]
+  },
+  "c28": {
+   "at": 153.94,
+   "end": 157.24,
+   "src": [
+    291.9,
+    295.2
+   ]
+  },
+  "c29": {
+   "at": 158.24,
+   "end": 163.85,
+   "src": [
+    312.74,
+    318.35
+   ]
+  },
+  "c30": {
+   "at": 164.07,
+   "end": 165.98,
+   "src": [
+    318.74,
+    320.65
+   ]
+  },
+  "c31": {
+   "at": 166.2,
+   "end": 173.28,
+   "src": [
+    320.92,
+    328
+   ]
+  }
+ },
+ "captions": [
+  [
+   1.89,
+   4.48,
+   "You're in the middle of something important."
+  ],
+  [
+   4.48,
+   6.41,
+   "Then *NEPA* takes the light."
+  ],
+  [
+   6.41,
+   8.27,
+   "You check the meter."
+  ],
+  [
+   8.27,
+   12.04,
+   "They didn't take it o — it was *your units* that finished."
+  ],
+  [
+   12.04,
+   15.24,
+   "And just when you think you're done,"
+  ],
+  [
+   15.24,
+   18.6,
+   "MTN sends you a message: your data is down to *50MB* too."
+  ],
+  [
+   18.6,
+   22.76,
+   "So now you're deciding what to pay for *between the two*."
+  ],
+  [
+   24.12,
+   26.05,
+   "These are *competing household needs*."
+  ],
+  [
+   26.05,
+   28.54,
+   "Automatic payments can follow instructions,"
+  ],
+  [
+   28.54,
+   32.8,
+   "but they don't know which need *matters more right now*."
+  ],
+  [
+   33.25,
+   36.57,
+   "So we built *Borderless*."
+  ],
+  [
+   36.57,
+   39.21,
+   "An autonomous household utilities agent."
+  ],
+  [
+   39.21,
+   43.92,
+   "You set your household *budget*, *priorities* and spending permissions."
+  ],
+  [
+   43.92,
+   47.09,
+   "You set the rules. *Borderless does the work.*"
+  ],
+  [
+   47.56,
+   51.65,
+   "But here's where Borderless differs from *ordinary auto-pay*."
+  ],
+  [
+   51.65,
+   55.39,
+   "Imagine you have just *2 USDC* of spending authority left."
+  ],
+  [
+   55.39,
+   58.62,
+   "Your electricity is running low."
+  ],
+  [
+   58.62,
+   61.27,
+   "Your mobile data is running low too."
+  ],
+  [
+   61.27,
+   64.56,
+   "Both matter. But you can't afford both right now."
+  ],
+  [
+   64.56,
+   68.6,
+   "Borderless weighs the household's *priorities*, urgency and eligible options."
+  ],
+  [
+   68.6,
+   72.58,
+   "It prioritises *electricity* and defers the data purchase."
+  ],
+  [
+   72.58,
+   74.7,
+   "And it explains why."
+  ],
+  [
+   75.57,
+   80.41,
+   "One decision matters most: the agent does not control *financial authority*."
+  ],
+  [
+   80.41,
+   85.24,
+   "Every intended purchase passes through an *independent policy engine*."
+  ],
+  [
+   85.24,
+   88.46,
+   "Only then can the purchase reach the *x402* payment layer."
+  ],
+  [
+   88.46,
+   92.8,
+   "The provider protects the resource behind *HTTP 402*."
+  ],
+  [
+   92.8,
+   98.14,
+   "Borderless validates the terms; the facilitator verifies and *settles on Stellar*."
+  ],
+  [
+   98.14,
+   101.72,
+   "Only after settlement does the provider *release* the resource."
+  ],
+  [
+   102.76,
+   105.55,
+   "We simulate a low electricity balance."
+  ],
+  [
+   105.55,
+   108.56,
+   "Borderless detects the shortage, checks its spending authority"
+  ],
+  [
+   108.56,
+   113.11,
+   "and discovers an eligible electricity provider."
+  ],
+  [
+   113.11,
+   115.09,
+   "It requests the purchase."
+  ],
+  [
+   115.09,
+   119.07,
+   "The provider responds: *HTTP 402, Payment Required*."
+  ],
+  [
+   119.07,
+   123.14,
+   "It won't release the protected resource until payment is *verified*."
+  ],
+  [
+   123.14,
+   126.42,
+   "Borderless validates the terms against the household's permissions."
+  ],
+  [
+   126.42,
+   130.2,
+   "It's within the authorised limit, so it proceeds."
+  ],
+  [
+   130.2,
+   134.86,
+   "Using *x402 on Stellar*, it makes a real USDC payment on testnet."
+  ],
+  [
+   134.86,
+   139.32,
+   "The provider verifies the settlement and *releases* the purchase."
+  ],
+  [
+   139.32,
+   144.74,
+   "The simulated meter is credited. Borderless verifies fulfilment"
+  ],
+  [
+   144.74,
+   146.25,
+   "and generates a *receipt*."
+  ],
+  [
+   146.7,
+   150.94,
+   "Here, it attempts a purchase above the authorised limit."
+  ],
+  [
+   150.94,
+   154.06,
+   "The system rejects it *before payment is signed*."
+  ],
+  [
+   154.06,
+   157.59,
+   "Because autonomy should never mean *losing control*."
+  ],
+  [
+   158.34,
+   164.17,
+   "We started with *electricity*. The same system extends to airtime, data and more."
+  ],
+  [
+   164.17,
+   166.3,
+   "This is Borderless."
+  ],
+  [
+   166.3,
+   170.94,
+   "Your household stays powered and connected. *Borderless handles the rest.*"
+  ],
+  [
+   170.94,
+   173.63,
+   "Made by Gloria and Hannah."
+  ]
+ ]
+}
