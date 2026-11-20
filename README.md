@@ -5,6 +5,8 @@
 
 `x402 v2` · `@x402/core` + `@x402/stellar` · `exact` scheme · `stellar:testnet` · test USDC · Next.js 16
 
+**🔗 Live demo: [teamborderless.vercel.app](https://teamborderless.vercel.app)**: no setup, real x402 payments on Stellar testnet. Start at [`/overview`](https://teamborderless.vercel.app/overview).
+
 <!-- Demo video: upload borderless-demo-under3.mp4 (drag it into this file in GitHub's web editor) and put its link here. -->
 **▶ Demo video (2:56):** *link to be added*
 
@@ -31,7 +33,7 @@
 | **How does the payment flow work?** | [2 · The payment flow, step by step](#2--how-the-payment-flow-works) |
 | **How does the integration support the core functionality?** | [3 · Why the product depends on x402](#3--how-the-integration-supports-the-core-functionality) |
 | **Why can't Borderless exist without x402?** | [Why Borderless cannot exist without x402](#why-borderless-cannot-exist-without-x402) |
-| **Can I try it myself?** | [Try it yourself (about 10 minutes)](#try-it-yourself-about-10-minutes) |
+| **Can I try it myself?** | Yes: [open the live demo](https://teamborderless.vercel.app/overview), or see [Try it yourself](#try-it-yourself) for the walkthrough and running it locally |
 
 **Proof from a real run** (Scenario A, recorded for the demo video): the agent paid **2.0000000 test USDC** to the electricity provider's registered wallet in transaction [`46846b41…2c73`](https://stellar.expert/explorer/testnet/tx/46846b41a6735355b153f0213a84d3e86655cb355f0a40376ca25672da232c73) (ledger 5,780,559), and only then did the provider credit the meter.
 
@@ -158,9 +160,19 @@ In short: **the household's needs are continuous, the providers are many and cha
 
 ---
 
-## Try it yourself (about 10 minutes)
+## Try it yourself
 
-Everything runs locally against **Stellar testnet**. You never need real money, a personal wallet or an API key; the setup script creates and funds its own testnet wallets.
+You never need real money, a personal wallet or an API key. Every payment is test USDC on **Stellar testnet**.
+
+### Option 1 · The live demo (no setup)
+
+Open **<https://teamborderless.vercel.app/overview>** and follow the [walkthrough](#a-judges-walkthrough) below. It is the same code as this repository, deployed on Vercel with a hosted database, paying through x402 on Stellar testnet with its own funded testnet wallets.
+
+The live demo has **one shared demo household**. If someone else is running the agent, a new run waits until theirs finishes (*"Borderless is already working on a task"*), and **Reset demo** resets it for everyone.
+
+### Option 2 · Run it locally (about 10 minutes)
+
+The setup script creates and funds its own testnet wallets.
 
 **Prerequisites:** Node.js 22.23.4 or later (developed on Node 24), pnpm 10, git, internet access to Stellar testnet. *(Optional: a Gemini or OpenAI API key for the AI planner. Without one, the deterministic planner runs the same tools, rules and real payments.)*
 
@@ -180,7 +192,7 @@ On Windows PowerShell, use `copy .env.example .env.local` instead of `cp`. `pnpm
 
 | # | Do this | What you should see |
 | --- | --- | --- |
-| 1 | Open <http://localhost:3000/overview> and press **Reset demo** | The Okafor Household is healthy; the agent wallet's **live testnet balance** is shown. |
+| 1 | Open [`/overview`](https://teamborderless.vercel.app/overview) (live) or <http://localhost:3000/overview> (local) and press **Reset demo** | The Okafor Household is healthy; the agent wallet's **live testnet balance** is shown. |
 | 2 | Press **Simulate low balance** *(Scenario A)* | A real agent run starts and its live console opens: observe → forecast → discover → decide → spending rules → **HTTP 402** → sign → **settle on Stellar** → release → verify. About a minute. |
 | 3 | Open the purchase and press **Inspect procurement** | The decoded 402, each policy check, the transaction hash with a **Stellar Expert** link, and the released units. |
 | 4 | Press **Request without paying** | The provider's **live 402**: without payment, nothing is released. |
@@ -189,17 +201,17 @@ On Windows PowerShell, use `copy .env.example .env.local` instead of `cp`. `pnpm
 | 7 | Demo controls → Scenario **C · Spending limit**, then **Attempt over-limit purchase** | A 5 USDC instruction is **refused before signing**, naming each rule it broke. No payment, no transaction. |
 | 8 | Settings → **Pause** or **Emergency stop** | The agent keeps monitoring but cannot spend; pending approvals are declined. |
 
-Each live electricity purchase spends 2 test USDC. `pnpm wallets:recycle` returns what the demo providers received, so the demo can be repeated without new funding.
+Each electricity purchase spends 2 test USDC. Locally, `pnpm wallets:recycle` returns what the demo providers received, so the demo can be repeated without new funding.
 
 ### See the 402 from your terminal
 
-With `pnpm dev` running, ask a paid endpoint for a meter diagnostic **without paying**:
+Ask the live site's paid endpoint for a meter diagnostic **without paying**. It costs nothing, because nothing is paid:
 
 ```bash
-curl -i -X POST http://localhost:3000/api/services/prv_demo_gridsense/meter-diagnostic -H "content-type: application/json" -d '{"accountIdentifier":"45012345678","purchaseId":"pur_judgetry000001"}'
+curl -i -X POST https://teamborderless.vercel.app/api/services/prv_demo_gridsense/meter-diagnostic -H "content-type: application/json" -d '{"accountIdentifier":"45012345678","purchaseId":"pur_judgetry000001"}'
 ```
 
-You get `HTTP/1.1 402 Payment Required` and a `payment-required` header. Base64-decoded, it is the x402 v2 challenge:
+(Locally, use `http://localhost:3000` instead.) You get `HTTP/1.1 402 Payment Required` and a `payment-required` header. Base64-decoded, it is the x402 v2 challenge:
 
 ```json
 { "x402Version": 2, "error": "Payment required",
@@ -214,7 +226,7 @@ That is 0.30 test USDC (7 decimals) for the diagnostic. The free endpoints, `GET
 ### Prove it from scripts (optional)
 
 ```bash
-pnpm check                                                    # typecheck + 316 unit/integration tests (no network, no funds)
+pnpm check                                                    # typecheck + 318 unit/integration tests (no network, no funds)
 APP_BASE_URL=http://localhost:3000 pnpm demo:providers        # a live x402 purchase from each of the six providers + failure cases
 APP_BASE_URL=http://localhost:3000 pnpm agent:run --mode deterministic   # a full agent run, every event printed
 ```
@@ -242,7 +254,7 @@ APP_BASE_URL=http://localhost:3000 pnpm agent:run --mode deterministic   # a ful
 
 ## Deploy on Vercel
 
-Borderless runs on Vercel's serverless functions. Vercel has no lasting disk, so the database is a hosted **libSQL** database (Turso, free tier), which speaks SQLite. Agent runs keep working after the request that starts them (`after()`), record a heartbeat so any instance can tell a live run from a dead one, and the live console reads new events from the database.
+The live demo at <https://teamborderless.vercel.app> is deployed this way. Borderless runs on Vercel's serverless functions. Vercel has no lasting disk, so the database is a hosted **libSQL** database (Turso, free tier), which speaks SQLite. Agent runs keep working after the request that starts them (`after()`), record a heartbeat so any instance can tell a live run from a dead one, and the live console reads new events from the database.
 
 1. **Create the database** with the [Turso CLI](https://docs.turso.tech/cli/installation):
    ```bash
@@ -585,7 +597,7 @@ Live scripts call the running app: `APP_BASE_URL=http://localhost:3000 pnpm demo
 ## Testing
 
 ```bash
-pnpm check                # typecheck + 316 unit/integration tests (no network, no funds)
+pnpm check                # typecheck + 318 unit/integration tests (no network, no funds)
 pnpm test:e2e             # 34 Playwright tests, incl. accessibility and mobile (no funds spent)
 E2E_LIVE=1 pnpm test:e2e  # adds the full live browser journey (spends test USDC)
 ```
@@ -691,7 +703,7 @@ How each criterion of the procurement amendment is met, and where it is proven.
 - **Simulated utilities and demo providers.** No real DisCo, VTU or mobile-network integration.
 - **Gemini free tier.** The configured key allows 20 model requests per day per model, about one full AI run. The AI's live procurement run on the stuck-heater scenario (discover → buy the ₦300 diagnostic → quote ₦1,500 of minimal relief) was cut short by this quota before it paid for the electricity; the deterministic planner completes the same flow, live.
 - **Live AI runs use model credit.** Without a working key the AI planner stops safely (for example `model_no_credits`); the deterministic planner runs the same tools, rules and payments. AI behaviour is also proven with a scripted model in tests. Model availability varies: if Google reports high demand for a model, set `GEMINI_MODEL` to another one your key lists.
-- **Single household, no authentication.**
+- **Single household, no authentication.** The live demo is one shared household; anyone with the link can reset it or trigger testnet payments from its agent wallet (test USDC only).
 - **Concurrency across server instances.** One run per household is enforced through the database (a heartbeat shows which runs are alive), and settlements are unique per transaction hash. Two runs started at the same instant on different instances could still both begin; nothing is paid twice, because of the database's unique constraints.
 - **Funding guard keys.** The treasury key is server-side for the demo. Allowance expiry is shown as an estimate from the ledger gap.
 - **Conservative unknown-outcome reconciliation**: concludes "not charged" only after the payment authorisation expires; it does not search the chain for unrecorded transactions.
