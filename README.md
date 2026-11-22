@@ -72,26 +72,35 @@ Borderless implements both sides of x402 with the official `@x402/core` and `@x4
 ```mermaid
 sequenceDiagram
     autonumber
-    participant A as Borderless agent (buyer)
-    participant P as Policy engine (code)
+    participant A as Borderless agent
+    participant P as Policy engine
     participant S as Provider (x402 seller)
     participant F as x402 facilitator
     participant X as Stellar testnet
-    A->>S: POST /quote (free)
-    S-->>A: Binding quote: product, NGN, USDC, payee, 5-min expiry
-    A->>P: Check provider, payee, caps, budgets, approval
-    A->>S: POST /purchase (no payment)
-    S-->>A: HTTP 402 + PAYMENT-REQUIRED
-    A->>P: 402 must match the quote; check again with live wallet balance
-    A->>A: Sign Soroban authorisation entry (key stays on the server)
+
+    Note over A,S: Stage 1 · Quote and first check
+    A->>S: Request a quote (free)
+    S-->>A: Binding quote with product, price in naira and USDC, payee, 5-minute expiry
+    A->>P: Check provider, payee, caps, budgets and approval
+    P-->>A: Allowed
+
+    Note over A,S: Stage 2 · Payment required
+    A->>S: Purchase request without payment
+    S-->>A: HTTP 402 with the PAYMENT-REQUIRED terms
+    A->>A: Confirm the 402 matches the quote exactly
+    A->>P: Check again with the live wallet balance
+    P-->>A: Allowed
+    A->>A: Sign the payment (the key never leaves the server)
+
+    Note over A,X: Stage 3 · Settle on Stellar, then release
     A->>S: Retry with PAYMENT-SIGNATURE
-    S->>F: Verify, then settle
-    F->>X: USDC transfer
+    S->>F: Verify and settle the payment
+    F->>X: Submit the USDC transfer
     X-->>F: Transaction hash
     F-->>S: Settled
     S->>S: Record the hash, then release the utility
-    S-->>A: 200 + receipt + PAYMENT-RESPONSE
-    A->>X: Confirm the transfer on Horizon
+    S-->>A: 200 OK with receipt and PAYMENT-RESPONSE
+    A->>X: Confirm the transfer independently on Horizon
 ```
 
 The agent notices from real household data that, say, the meter has about a day left. It discovers the eligible providers, gets a binding quote and runs it past the policy engine. The provider answers with a 402, and Borderless refuses to sign anything that differs from the quote, then checks the owner's rules once more against the live wallet balance before signing. The facilitator verifies and settles the payment on Stellar, the provider credits the meter and issues a receipt, and Borderless confirms the transfer on Horizon and reassesses the household. Payment and delivery are recorded separately, so if a provider is paid but fails to deliver, the purchase can be completed later without paying twice.
@@ -205,10 +214,6 @@ Each run executes in the background with an ordered, persisted event log that st
 
 The [tools](src/server/agent/runtime/tools.ts) all read real application state: `observe_household`, `inspect_utility`, `inspect_budget`, `discover_services`, `read_price_list`, `search_offers`, `compare_offers`, `get_allocation_recommendation`, `request_quote`, `evaluate_purchase` (a dry run of the rules), `buy_service`, `inspect_transaction`, `verify_fulfilment`, `reassess_household` and `finish`. Every argument is re-validated on the server, and code refuses a purchase when a utility still has plenty left or its usage looks abnormal.
 
-## Paying for information
-
-The household's free view of the meter is hourly totals, so the cause of a sudden jump (a stuck appliance, guests, a faulty meter) is only visible to a paid diagnostic. Two diagnostic services sell it through x402: GridSense (₦300 = 0.30 USDC) and MeterLab (₦800 = 0.80 USDC). The agent buys one only when usage is unexplained, the purchase depends on the cause and the price is at most 20% of that purchase, within an owner-set information cap. It then acts on the report, and never buys the same information twice.
-
 ## Spending policy and approvals
 
 [`policy.ts`](src/server/household/policy.ts) runs eleven ordered checks on every payment, once when it is proposed and again with the live wallet balance just before signing:
@@ -274,68 +279,11 @@ The [data model](src/server/db/schema.ts) keeps an append-only log of every agen
 
 ---
 
-## Deploy on Vercel
+## Proof that it works
 
-The live demo runs on Vercel with a hosted libSQL database (Turso), because serverless functions have no lasting disk. Agent runs keep working after the response that starts them, record a heartbeat in the database, and the live console reads new events from the database, so it all works across server instances.
+Each capability below can be seen in the live demo or checked in the code and tests.
 
-1. Create a database at [app.turso.tech](https://app.turso.tech) and copy its URL and an auth token.
-2. Put them in `.env.local` as `DATABASE_URL` and `DATABASE_AUTH_TOKEN`, then run `pnpm db:reset`.
-3. Import the repository on Vercel and add the environment variables from `.env.local` (database, Stellar, facilitator, demo rate, the agent, treasury and empty-wallet keys, the eight `PROVIDER_*_PAYTO` values and optionally `GEMINI_API_KEY`). The `PROVIDER_*_SECRET` values aren't needed.
-4. Deploy. `APP_BASE_URL` defaults to the production domain; use the production deployment, because preview deployments sit behind Vercel's login.
-
-## Commands and testing
-
-| Command | What it does |
-|---|---|
-| `pnpm dev` / `pnpm build` / `pnpm start` | Run the app |
-| `pnpm wallets:setup` / `wallets:status` / `wallets:recycle` | Create and fund testnet wallets, show balances, return spent test USDC to the agent |
-| `pnpm db:reset [scenario]` / `db:migrate` | Reset the demo household (optionally into a scenario) / apply migrations |
-| `pnpm agent:run [--mode ai\|deterministic] [--scenario id]` | Run the agent from the terminal and print every event |
-| `pnpm demo:providers` / `demo:funding-guard` / `demo:recovery` | Live x402 purchases from every provider, the on-chain allowance, and failure recovery |
-| `pnpm check` | Typecheck and 318 unit and integration tests (no network, no funds) |
-| `pnpm test:e2e` | 34 Playwright tests, including accessibility and mobile; `E2E_LIVE=1` adds a live journey that spends test USDC |
-
-The tests cover the policy and every check, decisions and forecasting, quotes, x402 requirement validation (wrong payee, amount, asset, network or scheme), settle-before-release, duplicate payments, approvals, the funding guard, live streaming and restarts, model outages, prompt injection and every demo scenario.
-
-## Configuration
-
-All settings are server-side and validated at startup ([`env.ts`](src/server/config/env.ts)); [`.env.example`](.env.example) lists them all, and `pnpm wallets:setup` fills in the wallet values.
-
-| Variable | Purpose |
-|---|---|
-| `DATABASE_URL`, `DATABASE_AUTH_TOKEN` | Local SQLite file, or a hosted libSQL URL and token |
-| `APP_BASE_URL` | Where the agent reaches the providers (defaults to this server, or the Vercel production domain) |
-| `STELLAR_NETWORK` | `stellar:testnet`; any other network is rejected |
-| `X402_FACILITATOR_URL` | Defaults to `https://x402.org/facilitator` |
-| `DEMO_NGN_PER_TESTNET_USDC` | The fixed demo rate, 1000 |
-| `AGENT_STELLAR_*`, `TREASURY_STELLAR_*`, `DEMO_EMPTY_WALLET_*`, `PROVIDER_*_PAYTO` | Testnet wallets and the providers' registered receiving addresses |
-| `GEMINI_API_KEY` or `OPENAI_API_KEY`, `GEMINI_MODEL`, `AGENT_MAX_STEPS`, `AGENT_RUN_TIMEOUT_SECONDS` | AI planner and run limits |
-
-## Security
-
-Keys for the agent, treasury and AI provider are read only by server code and are never sent to the browser, logged or shown to the model. Providers are paid only at wallets in the server's own registry, never at an address a provider supplies. Provider text reaches the model labelled as untrusted data, and no tool accepts an amount, payee or approval. Limits are enforced twice before signing, a resource is never released before settlement, and each transaction hash can settle only one purchase. The app is testnet-only, never asks for a user's wallet or seed phrase, and blocks cross-site requests, but it has no login, so anyone with the live link can use the demo household.
-
-## Failure handling
-
-Payment and delivery are recorded separately, and a payment is never shown as successful until it is confirmed on-chain.
-
-| Situation | Outcome |
-|---|---|
-| Not enough USDC, a 402 that doesn't match the quote, or an expired or reused quote | Stopped before signing: **not charged** |
-| Approval declined, expired or terms changed | Cancelled, **not charged**; the agent reassesses |
-| Provider down or not returning a 402 | **Not charged**; falls back to another approved provider |
-| Settlement outcome unclear | Marked **outcome unknown** and reconciled before any retry, never paid twice blindly |
-| Paid, but the provider fails to release | **Payment confirmed, release failed**; retry delivers without paying again |
-| Restart mid-run or mid-purchase | Unsent payments closed as not charged, possibly sent ones reconciled, dead runs marked interrupted |
-| AI model timeout or outage | The run stops safely; completed purchases stay recorded |
-
-## x402 versus MPP
-
-Stellar supports two [agentic payment protocols](https://developers.stellar.org/docs/build/agentic-payments): **x402**, one payment per request settled by a facilitator, and **MPP**, which adds sessions where an agent funds a payment channel once and then streams many tiny off-chain payments. Borderless uses x402 because a household makes a few distinct purchases a day, each with its own quote, approval, receipt and on-chain transaction. MPP sessions would fit later if Borderless started paying for high-frequency data such as per-minute meter readings, behind the same policy engine and funding guard.
-
-## Acceptance criteria
-
-| Criterion | Evidence |
+| What Borderless does | Where you can see it |
 |---|---|
 | Identifies a need from real household state | `need.identified` events from real forecasts; procurement decision tests |
 | Discovers providers and tells free from paid | HTTP discovery of service documents, verified against the registry |
@@ -347,27 +295,7 @@ Stellar supports two [agentic payment protocols](https://developers.stellar.org/
 | Compares alternatives | Two providers per utility and two diagnostic offers, with rejected options recorded |
 | Auditable and observable in real time | Separate payment and delivery records, receipts, live run stream and inspection |
 
-## Known limitations
-
-- Utilities and providers are simulated; there is no integration with a real power company, VTU provider or mobile network.
-- The live demo is one shared household with no login.
-- The Gemini free tier allows about one full AI run a day; the deterministic planner runs the same flow without a model.
-- The treasury key for the funding guard is held on the server for the demo; in a real deployment the owner would sign the allowance in their own wallet.
-- An uncertain payment is concluded "not charged" only after its authorisation expires.
-- If the public facilitator is down, purchases fail safely; `X402_FACILITATOR_URL` can point to a self-hosted one.
-- Stellar testnet resets from time to time; run `pnpm wallets:setup` again.
-
-## Troubleshooting
-
-| Problem | Fix |
-|---|---|
-| A page returns 500 after updating | `pnpm db:migrate`, then reload |
-| "Provider answered HTTP 404 instead of 402" | Set `APP_BASE_URL` to where Borderless is running |
-| AI mode unavailable, `model_no_credits` or `model_daily_quota` | Add a Gemini or OpenAI key with credit and restart, or use the deterministic planner |
-| A wallet setting is missing, or wallets disappeared | `pnpm wallets:status`, then `pnpm wallets:setup` (testnet may have reset) |
-| A Windows script exits with `3221225477` | The native SQLite client crashed on exit; run it again |
-
-The [technical reference](docs/technical-reference.md) has the full detail behind every section.
+Deployment, configuration, security, failure handling, troubleshooting and the rest of the detail are in the [technical reference](docs/technical-reference.md).
 
 ---
 
