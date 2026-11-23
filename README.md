@@ -38,7 +38,7 @@ We believe this is how the blockchain reaches the people who stand to gain the m
 
 ---
 
-**Demo video (2:56):** 
+**Demo video (1:58):** 
 
 https://github.com/user-attachments/assets/aca179a1-06cf-4b2a-ab56-5d7c71e0a13a
 
