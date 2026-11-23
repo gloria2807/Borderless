@@ -19,13 +19,9 @@
 
 ## When the light goes off and the data follows
 
-In Nigeria right now, nobody is spending money freely. Prices seem to climb every time you step into the market while salaries stay where they are, so most families have learnt to stretch whatever comes in until it reaches the end of the month. Every naira already has a job before it arrives, and the money for electricity units has to share the same small budget as data, food, transport and school fees.
+In Nigeria today, life is expensive and money is tight. Prices go up almost every week but salaries don't, so most families plan how every naira will be spent before it even comes in. Light and data come out of that same small budget with food and transport, yet they are the two things a home can't do without, especially if you work from home or run a business from your phone, because when either one runs out you can miss a deadline or lose a client.
 
-Yet light and data are the two things a home can least afford to lose. For the many people who now work remotely, freelance for clients abroad or run a small business from their phone, a dead meter or an empty data plan is far more than an inconvenience, because it can mean a missed deadline, a client who quietly moves on, or a day's income that never arrives.
-
-It always seems to happen at the worst moment. You are in the middle of a call or rushing to submit something important when the power goes off, and you assume it is NEPA (the name many Nigerians still use for the power company) until you check the meter and realise your units have finished. You reach for your phone to buy more, only to find a message telling you your data is almost gone as well, and now you are sitting in the dark with not quite enough money, working out which one you can bear to go without.
-
-Wherever you are reading this from, you probably know some version of that feeling, whether it is the rent and the power bill falling due in the same week or a prepaid plan that runs out in the middle of something that matters. Borderless was built for that moment, so that a household's most important needs are watched over and paid for before anyone has to sit in the dark and choose.
+And it always seems to happen at the worst moment. You are in the middle of a call or about to submit something important when the power goes off, and you assume it is NEPA (what many Nigerians still call the power company) until you check the meter and see your units have finished, then reach for your phone to buy more and find your data is almost gone too. Wherever you live, you probably know that feeling of sitting with not quite enough money and two needs, working out which one you can bear to go without. Borderless was built so that nobody has to make that choice in the dark.
 
 ## What Borderless does
 
