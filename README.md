@@ -5,7 +5,6 @@
 *Your household stays powered and connected. Borderless handles the rest.*
 
 **Live demo:** [teamborderless.vercel.app](https://teamborderless.vercel.app). No setup needed; start at [/overview](https://teamborderless.vercel.app/overview).
-**Demo video (2:56):** *link to be added*
 
 `x402 v2` · `@x402/core` + `@x402/stellar` · `exact` scheme · `stellar:testnet` · USDC · Next.js 16
 
@@ -38,6 +37,14 @@ Stellar does its work underneath. Each purchase is paid in USDC on Stellar, whic
 We believe this is how the blockchain reaches the people who stand to gain the most from it. Rather than asking a nurse in Ibadan or a remote developer in Lagos to become a crypto user, Borderless quietly makes the bills they already pay easier, cheaper and fairer to pay, and every household it serves becomes a Stellar user without having to think about it. In production, a household would fund its budget in naira through a Stellar anchor, the regulated on and off ramps that connect local bank accounts to USDC; in this demo, the fixed rate of ₦1,000 = 1 test USDC stands in for that step.
 
 ---
+
+**Demo video (2:56):** 
+
+https://github.com/user-attachments/assets/aca179a1-06cf-4b2a-ab56-5d7c71e0a13a
+
+
+
+
 
 ## How x402 on Stellar powers Borderless
 
